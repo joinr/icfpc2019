@@ -1,7 +1,13 @@
 (defproject icfpc "2019.0.0"
   :dependencies
   [[org.clojure/clojure   "1.9.0"]
-   [org.clojure/data.json "0.2.6"]]
+   [org.clojure/data.json "0.2.6"]
+   
+   [criterium "0.4.5"]
+   [clj-tuple "0.2.2" :exclusions [org.clojure/clojure]]
+   [io.lacuna/bifurcan "0.1.0"]
+   [org.clojure/data.int-map "0.2.4"]
+   ]
   :source-paths   ["src"]
   :resource-paths ["resources"]
   :main icfpc.main

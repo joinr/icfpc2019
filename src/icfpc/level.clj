@@ -4,7 +4,8 @@
    [clojure.string :as str]
    [icfpc.core :refer :all]
    [icfpc.parser :as parser]
-   [icfpc.writer :as writer])
+   [icfpc.writer :as writer]
+   #_[clojure.data/intmap :as i] )
   (:import
    [java.util Arrays]))
 
@@ -19,7 +20,30 @@
 (defn update-bot [level key f & args]
   (apply update level :bots update *bot* update key f args))
 
-(def hand-blocks
+;;perf: using point records as keys to vector for coords.
+;;called by valid-hand? frequently
+;;point ctr fn could be inlined or macrofied...
+;;probably faster to reduce eagerly and avoid
+;;lazy seq stuff.
+;;This is building a map, hand-blocks, which is
+;;being used for lookups based on ->Points as
+;;keys.  Likely improvement is to
+;;define a function hand-blocks that leverages
+;;a more efficient int mapping of points to
+;;coordinates.  Looks like points are just
+;;int pairs...Incurring a LOT of overhead
+;;on lookups here.
+#_(def hand-blocks
+  (into {(->Point 1 -1) [[1 -1]]
+         (->Point 1 0)  [[1 0]]
+         (->Point 1 1)  [[1 1]]}
+        (for [maxy (range 2 20)]
+          [(->Point 1 maxy) (vec
+                             (concat
+                              (for [y (range 1 (inc (quot maxy 2)))] [0 y])
+                              (for [y (range (int (Math/ceil (/ maxy 2.0))) (inc maxy))] [1 y])))])))
+
+(def hand-blocks-map
   (into {(->Point 1 -1) [[1 -1]]
          (->Point 1 0)  [[1 0]]
          (->Point 1 1)  [[1 1]]}
@@ -29,6 +53,17 @@
                             (for [y (range 1 (inc (quot maxy 2)))] [0 y])
                             (for [y (range (int (Math/ceil (/ maxy 2.0))) (inc maxy))] [1 y])))])))
 
+
+(let [kvs      (sort-by (comp :y key) (seq hand-blocks-map))
+      ^objects entries (object-array (map val kvs))
+      ^ints ys (int-array (map (comp :y key) kvs))
+      ]
+  (defn hand-blocks [^long dx ^long dy]
+    (when (== dx 1)
+      (let [idx (java.util.Arrays/binarySearch ys dy)]
+        (when (> idx -1)
+          (aget entries  idx))))))
+  
 (defn valid?
   ([x y {:keys [width height] :as level}]
     (when (and
@@ -42,13 +77,55 @@
     (let [{:keys [x y]} (nth bots *bot*)]
       (valid? x y level))))
 
-(defn valid-hand? [x y dx dy {:keys [width height] :as level}]
-  (let [x' (+ x dx) y' (+ y dy)]
+(defn <3 [x y z]
+  (and (< x y)
+       (< y z)))
+
+(defn every-fast? [pred xs]
+  (reduce (fn [acc x]
+            (if (pred x)
+              acc
+              (reduced nil))) true xs))
+
+(defn obstacle?  [level x y dx' dy']
+  (not (identical? OBSTACLE (get-level level (unchecked-add x dx') (unchecked-add y dy')))))
+
+;;perf: this is a hot spot
+;;perf: dstructuring of map args costs "some"
+(defn valid-hand? [x y dx dy ^icfpc.core.lev level #_{:keys [width height] :as level}]
+  (let [width  (.width level)
+        height (.height level)
+        x' (unchecked-add x dx) y' (unchecked-add y dy)] ;;perf: hinted numeric ops could help here...
     (when (and
-            (< -1 x' width)
-            (< -1 y' height)
-            (every?
-              (fn [[dx' dy']] (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
+            (<3 -1 x' width)  ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+            (<3 -1 y' height) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+            (every-fast? ;;perf: every? coerces to seq, some cost from chunking.
+             ;;perf: not= is comparing ifpc.core/OBSTACLE (a byte boxed in a var...) to result from
+             ;;get-level.  Going though boxed comparison, possible optimization is (not (identical? ...))
+             ;;destructuring in predicate incurs overhead.
+             ;;possible boxed
+             (fn [[dx' dy']]
+               (obstacle? level x y dx' dy'))
+             #_(fn [[dx' dy']] (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
+             ;;perf: ->Point constructor may be incurring overhead here and in
+             ;;hand-blocks, which is a map being used for lookups.
+              (or (hand-blocks dx dy #_(->Point dx dy)) (throw (Exception. (str "Unknown hand offset" dx dy))))))
+      level)))
+
+
+#_(defn valid-hand? [x y dx dy {:keys [width height] :as level}]
+  (let [x' (+ x dx) y' (+ y dy)] ;;perf: hinted numeric ops could help here...
+    (when (and
+            (< -1 x' width)  ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+            (< -1 y' height) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+            (every? ;;perf: every? coerces to seq, some cost from chunking.
+             ;;perf: not= is comparing ifpc.core/OBSTACLE (a byte boxed in a var...) to result from
+             ;;get-level.  Going though boxed comparison, possible optimization is (not (identical? ...))
+             ;;destructuring in predicate incurs overhead.
+             ;;possible boxed 
+             (fn [[dx' dy']] (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
+             ;;perf: ->Point constructor may be incurring overhead here and in
+             ;;hand-blocks, which is a map being used for lookups.
               (or (hand-blocks (->Point dx dy)) (throw (Exception. (str "Unknown hand offset" dx dy))))))
       level)))
 
@@ -151,11 +228,21 @@
             1
             0))))))
 
-(defn valid-point? [{:keys [width height] :as level} [x y]]
+#_(defn valid-point? [{:keys [width height] :as level} [x y]]
   (and (< -1 x width) (< -1 y height)))
 
-(defn neighbours [level [x y]]
-  (filter #(valid-point? level %) [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]]))
+#_(defn neighbours [level [x y]]
+    (filter #(valid-point? level %) [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]]))
+
+(defn valid-point?
+  ([{:keys [width height] :as level} xy]
+   (valid-point? width height xy))
+  ([width height [x y]]
+   (and (< -1 x width) (< -1 y height))))
+
+
+(defn neighbours [{:keys [width height] :as level} [x y]]
+  (filter #(valid-point? width height %) [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]]))
 
 (defn points-by-value [level value]
   (for [i (range 0 (:width level))
@@ -176,6 +263,7 @@
   (let [width (:width level)
         height (:height level)
         max-iteration-count (* width height)
+        ;;these are all long pairs....
         empty-points (points-by-value level EMPTY)
 
         zones-count  bots
@@ -185,8 +273,8 @@
                    :height height
                    :grid (make-array Byte/TYPE (* width height))}
         _ (java.util.Arrays/fill ^bytes (:grid zones-map) (byte 0))
-        get (fn [zm x y] (aget ^bytes (:grid zm) (+ x (* y width))))
-        set (fn [zm x y v] (aset-byte ^bytes (:grid zm) (+ x (* y width)) v) zm)
+        get (fn [zm ^long x ^long y] (aget ^bytes (:grid zm)        (+ x (* y width))))
+        set (fn [zm ^long x ^long y v] (aset-byte ^bytes (:grid zm) (+ x (* y width)) v) zm)
         zones-map (reduce (fn [zm [idx [x y]]]
                             (set zm x y idx))
                           zones-map
@@ -196,7 +284,7 @@
                     (let [{:keys [zm end?]} (reduce (fn [{:keys [zm end?]} [x y]]
                                                       (if (= (get zm x y) 0)
                                                         (let [z (first (keep (fn [[nx ny]]
-                                                                               (when (= EMPTY (get-level level nx ny))
+                                                                               (when (== EMPTY (get-level level nx ny))
                                                                                  (let [z (get zones nx ny)]
                                                                                    (when (not= z 0)
                                                                                      z))))
@@ -251,6 +339,7 @@
           bonuses))
       level)))
 
+
 (defn load-level [name]
   (let [{:keys [bot-point corners obstacles boosters]} (parser/parse-level name)
         [width height] (bounds corners)
@@ -274,7 +363,8 @@
                        (count (filter #(= CLONE (val %)) (:boosters level)))
                        ((:collected-boosters level) CLONE 0)
                        1)]
-    (generate-zones level clones-count)))
+    (-> (generate-zones level clones-count)
+        map->lev)))
 
 (comment
   (def lvl (load-level "prob-002.desc"))

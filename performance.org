@@ -1,0 +1,59 @@
+* dynamic var lookups
+ (nth bots *bot*)
+
+* rate function, explore*
+
+* lots of destructuring
+
+
+
+* advance*
+** ifpc.bot/explore*
+*** rate
+**** valid-hand?
+The every? predicate for valid-hand invokes
+ifpc.core/get-level 
+
+get-level is primarily doing map lookups via
+keyword lookup sites, could be an opportunity
+to optimize.
+
+coord->index is invoked a lot as well, causing
+some overhead.
+
+Lots of map-as-function invocations.
+Lots of RestFN invocations surrounding < being
+called on variadic args, leading to seq version
+of next.
+
+And not=, but does so against a var without
+hinting, should be a number comparison.  Boxed
+math..
+
+**** clojure.lang.util/equiv
+vector equality, pcequiv
+tons of boxed numeric equality...
+**** ifpc.core/get-level
+
+**** ifpc.core/coord->idx
+
+
+*** hashset.contains
+**** ifpc.core.point/equals
+uses map equality
+invokes seq implementation
+invokes point.size, which invokes clojure.lang.rt/count
+
+
+*** ifpc.bot/step
+
+*** self-time (invocation)
+*** clojure.rt.count
+*** keyword lookup site / get
+*** hashset.add
+
+
+** ifpc.bot/act
+*** ifpc.bot/move
+**** ifpc.level/mark-wrapped
+**** ifpc.level/extra-move

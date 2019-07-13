@@ -68,6 +68,23 @@
         (throw e)
         (println "Failed" name "with" (type e) ":" (.getMessage e))))))
 
+(defn solve-elided [name & [{:keys [*left t0 throw?] :or {throw? true} :as opts}]]
+  (try
+    (let [level (level/load-level (str name ".desc"))
+          sln   (bot/solve level (merge {:debug? false} opts))
+          left  (some-> *left (swap! dec))]
+      (spit (str "problems/" name ".sol") (:path sln))
+      (log (when-some [t0 (:t0 opts)]
+             (str (- (System/currentTimeMillis) t0) "ms"))
+           (when (some? left)
+             (str "Left " left))
+           "Solved" name (dissoc sln :path) "was [elided]" #_(str/join " / " (compare-solutions name (:score sln))))
+      (:score sln))
+    (catch Exception e
+      (if (:throw? opts true)
+        (throw e)
+        (println "Failed" name "with" (type e) ":" (.getMessage e))))))
+
 (defn skip-till [n xs]
   (if (some? n) (drop n xs) xs))
 
@@ -102,6 +119,38 @@
         (for [name names]
           (CompletableFuture/runAsync
             ^Runnable (bound-fn [] (solve name {:t0 t0 :throw? false :*left *left}))
+            executor)))
+      (CompletableFuture/allOf)
+      (.join))
+    (log "DONE in" (- (System/currentTimeMillis) t0) " ms")
+    (.shutdown executor)))
+
+(defn main-elided [& [from till threads]]
+  (clear)
+  (let [re    (case java.io.File/separator
+                "\\" #".*\\(prob-\d\d\d)\.desc"
+                #".*/(prob-\d\d\d)\.desc")
+        from  (cond-> from (string? from) (Integer/parseInt))
+        till  (cond-> till (string? till) (Integer/parseInt))
+        names (->> (file-seq (io/file "problems"))
+                   (map #(.getPath ^File %))
+                   (filter #(str/ends-with? % ".desc"))
+                   (keep #(second (re-matches re %)))
+                   sort
+                 (take-till till)
+                 (skip-till from)
+                 (remove #(.exists (io/file (str "problems/" % ".sol")))))
+        t0       (System/currentTimeMillis)
+        threads  (or (cond-> threads (string? threads) (Integer/parseInt))
+                   (.. Runtime getRuntime availableProcessors))
+        executor (java.util.concurrent.Executors/newFixedThreadPool threads)
+        *left    (atom (count names))]
+    (log "Running" threads "threads, solving" (count names) "tasks")
+    (->
+      (into-array CompletableFuture
+        (for [name names]
+          (CompletableFuture/runAsync
+            ^Runnable (bound-fn [] (solve-elided name {:t0 t0 :throw? false :*left *left}))
             executor)))
       (CompletableFuture/allOf)
       (.join))
