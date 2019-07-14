@@ -17,12 +17,16 @@
         (= c1 :when-some)    `(if-some ~c2 ~(first cs) (cond+ ~@(next cs)))
         :else                `(if ~c1 ~c2 (cond+ ~@cs))))))
 
-#_(defrecord Point [x y]
-  Object
-  (toString [_] (str "(" x "," y ")"))
-  clojure.lang.Indexed
-  (nth [_ i] (case i 0 x 1 y))
-  (nth [_ i nf] (case i 0 x 1 y nf)))
+(defmacro <*
+  "Evaluates exprs one at a time, from left to right, ensuring
+   < property holds"
+  {:added "1.0"}
+  ([x] true)
+  ([x y] `(< ~x ~y))
+  ([x y & next]
+   `(let [le# ~x]
+      (and (< ~x ~y)
+           (<* ~y ~@next)))))
 
 ;;fastmath
 ;;https://github.com/generateme/fastmath/blob/master/src/fastmath/vector.clj
@@ -83,9 +87,13 @@
   (keySet   [this] #{x y}))
 
 (defn ->Point [x y]
-  (Point. (long x) (long y)))
+  (Point. (long x) (long y) -1 -1))
 
-
+(defprotocol ILevel
+  (lev-width   [level])
+  (lev-height  [level])
+  (lev-grid    [level])
+  (lev-weights [level]))
 
 (defrecord lev
     [name
@@ -100,61 +108,75 @@
      collected-boosters
      spawns
      boosters]
+  ILevel
+  (lev-width   [this] width)
+  (lev-height  [this] height)
+  (lev-grid    [this] grid)
+  (lev-weights [this] weights)
   clojure.lang.IFn
-  (invoke [this k] (.valAt this k)))
+  (invoke [this k] (case k
+                     :name name
+                     :width width
+                     :grid grid
+                     :zones-grid zones-grid
+                     :zones-area zones-area
+                     :weights weights
+                     :bots bots
+                     :empty empty
+                     :collected-boosters collected-boosters
+                     :spawns spawns
+                     :boosters boosters
+                     (.valAt this k)))
+  (invoke [this k default]
+    (case k
+      :name name
+      :width width
+      :grid grid
+      :zones-grid zones-grid
+      :zones-area zones-area
+      :weights weights
+      :bots bots
+      :empty empty
+      :collected-boosters collected-boosters
+      :spawns spawns
+      :boosters boosters
+      (.valAt this k default))))
+
+
+(extend-protocol
+    ILevel
+  clojure.lang.PersistentArrayMap
+  (lev-width   [this] (.valAt this :width))
+  (lev-height  [this] (.valAt this :heighth))
+  (lev-grid    [this] (.valAt this :gride))
+  (lev-weights [this] (.valAt this :weights))
+  clojure.lang.PersistentHashMap
+  (lev-width   [this] (.valAt this :width))
+  (lev-height  [this] (.valAt this :heighth))
+  (lev-grid    [this] (.valAt this :gride))
+  (lev-weights [this] (.valAt this :weights)))
     
+(def ^:const EMPTY (byte 0))
+(def ^:const OBSTACLE (byte 1))
+(def ^:const WRAPPED (byte 2))
+(def ^:const EXTRA_HAND \B)
+(def ^:const FAST_WHEELS \F)
+(def ^:const DRILL \L)
+(def ^:const SPAWN \X)
+(def ^:const TELEPORT \R)
+(def ^:const CLONE \C)
+(def ^:const WAIT \Z)
+(def ^:const UNKNOWN \?)
 
-(defn l-coord->idx ^long [^lev level x y] (+ x (* y (.width level))))
-(defn l-get-level
-  ([^lev level x y]
-   (aget ^bytes (.grid level) (l-coord->idx level x y)))
-  ([^lev level x y default]
-   (if (and
-         (< -1 x (.width level))
-         (< -1 y (.height level)))
-     (aget ^bytes (.grid level) (l-coord->idx level x y))
-     default)))
-
-(defn coord->idx ^long [level x y]
-  (if (instance? icfpc.core.lev level)
-    (l-coord->idx level x y)
-    (+ x (* y (:width level)))))
-
-(defn get-level
-  ([level x y]
-   (if (instance? icfpc.core.lev level)
-    (l-get-level level x y)
-    (aget ^bytes (:grid level) (coord->idx level x y))))
-  ([level x y default]
-   (if (instance? icfpc.core.lev level)
-     (l-get-level level x y default)
-     (if (and
-          (< -1 x (:width level))
-          (< -1 y (:height level)))
-       (aget ^bytes (:grid level) (coord->idx level x y))
-       default))))
-
-(def EMPTY (byte 0))
-(def OBSTACLE (byte 1))
-(def WRAPPED (byte 2))
-(def EXTRA_HAND \B)
-(def FAST_WHEELS \F)
-(def DRILL \L)
-(def SPAWN \X)
-(def TELEPORT \R)
-(def CLONE \C)
-(def WAIT \Z)
-(def UNKNOWN \?)
-
-(def UP    \W)
-(def DOWN  \S)
-(def LEFT  \A)
-(def RIGHT \D)
-(def ROTATE_CW  \E)
-(def ROTATE_CCW \Q)
-(def SET_BEAKON \R)
-(def JUMP       \T)
-(def REPLICATE  \C)
+(def ^:const UP    \W)
+(def ^:const DOWN  \S)
+(def ^:const LEFT  \A)
+(def ^:const RIGHT \D)
+(def ^:const ROTATE_CW  \E)
+(def ^:const ROTATE_CCW \Q)
+(def ^:const SET_BEAKON \R)
+(def ^:const JUMP       \T)
+(def ^:const REPLICATE  \C)
 
 (defn spend
   ([v] (cond (nil? v) nil (> v 1) (dec v) :else 0))
@@ -165,8 +187,11 @@
        (> v 1)  (update map k assoc k2 (dec v))
        :else    (update map k dissoc k2)))))
 
-(defn coord->idx ^long [level x y] (+ x (* y (:width level))))
-(defn get-level
+;;These are all performance killers due to function
+;;call overhead, numerous calls, and boxed math.
+
+;;(defn coord->idx ^long [level x y] (+ x (* y (:width level))))
+#_(defn get-level
   ([level x y]
    (aget ^bytes (:grid level) (coord->idx level x y)))
   ([ level x y default]
@@ -176,9 +201,42 @@
      (aget ^bytes (:grid level) (coord->idx level x y))
      default)))
 
-(defn set-level [level x y value]
+(definline coord->idx [level x y]
+  `(let [w# (lev-width ~level)]
+     (unchecked-add ~x (unchecked-multiply ~y w#))))
+
+(defn get-level
+  "blah"
+  {:inline (fn
+              ([level x y]
+               (let [bs (with-meta `(~level :grid) {:tag 'bytes})]
+                 `(aget ~bs (coord->idx ~level ~x ~y))))
+              ([level x y default]
+               (let [bs (with-meta `(~level :grid) {:tag 'bytes})]
+                 `(if (and
+                       (< -1 ~x (~level :width))
+                       (< -1 ~y (~level :height)))
+                   (aget ~bs (coord->idx ~level ~x ~y))
+                   ~default))))
+    :inline-arities #{3 4}}
+  ([level x y]  (aget ^bytes (level :grid) (coord->idx level x y)))
+  ([level x y default]
+   (if (and
+        (< -1 x (level :width))
+        (< -1 y (level :height )))
+     (aget ^bytes (level :grid) (coord->idx level x y))
+     default)))
+  
+#_(defn set-level [level x y value]
   (aset-byte (:grid level) (coord->idx level x y) value)
   level)
+
+(definline set-level [level x y value]
+  `(do (aset-byte (~level :grid) (coord->idx ~level ~x ~y) ~value)
+       ~level))
+
+#_(defn get-zone [level x y]
+  (aget ^bytes (:zones-grid level) (coord->idx level x y)))
 
 (defn get-zone [level x y]
   (aget ^bytes (:zones-grid level) (coord->idx level x y)))

@@ -2,7 +2,8 @@
   :dependencies
   [[org.clojure/clojure   "1.9.0"]
    [org.clojure/data.json "0.2.6"]
-   
+
+   [primitive-math "0.1.6" :exclusions [org.clojure/clojure]]
    [criterium "0.4.5"]
    [clj-tuple "0.2.2" :exclusions [org.clojure/clojure]]
    [io.lacuna/bifurcan "0.1.0"]

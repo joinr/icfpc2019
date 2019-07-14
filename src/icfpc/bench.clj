@@ -5,6 +5,7 @@
             [clj-tuple :as tup]
             [clojure.data.int-map :as i]
             [icfpc [core :as ic :refer [->Point]] [level :as level] [bot :as bot]]
+            [primitive-math :as p]
             )
   (:import [java.util HashSet HashMap ArrayDeque]))
 
@@ -353,3 +354,349 @@
                      j (range 20)]
                  (->Point i j))))
           
+
+;;core/get-level and core/coord->idx
+;;are on hot paths, particularly in bot/explore...
+
+(defprotocol ILevel
+  (lev-width   [level])
+  (lev-height  [level])
+  (lev-grid    [level])
+  (lev-weights [level]))
+
+(defrecord lev [name
+                ^int  width
+                ^int  height
+                ^bytes grid
+                ^bytes zones-grid
+                zones-area
+                ^shorts weights
+                bots
+                empty
+                collected-boosters
+                spawns
+                boosters]
+  ILevel
+  (lev-width   [this] width)
+  (lev-height  [this] height)
+  (lev-grid    [this] grid)
+  (lev-weights [this] weights)
+  clojure.lang.IFn
+  (invoke [this k] (case k
+                     :name name
+                     :width width
+                     :grid grid
+                     :zones-grid zones-grid
+                     :zones-area zones-area
+                     :weights weights
+                     :bots bots
+                     :empty empty
+                     :collected-boosters collected-boosters
+                     :spawns spawns
+                     :boosters boosters
+                     (.valAt this k)))
+  (invoke [this k default]
+    (case k
+      :name name
+      :width width
+      :grid grid
+      :zones-grid zones-grid
+      :zones-area zones-area
+      :weights weights
+      :bots bots
+      :empty empty
+      :collected-boosters collected-boosters
+      :spawns spawns
+      :boosters boosters
+      (.valAt this k default))))
+
+(extend-protocol
+    ILevel
+  clojure.lang.PersistentArrayMap
+  (lev-width   [this] (.valAt this :width))
+  (lev-height  [this] (.valAt this :heighth))
+  (lev-grid    [this] (.valAt this :gride))
+  (lev-weights [this] (.valAt this :weights))
+  clojure.lang.PersistentHashMap
+  (lev-width   [this] (.valAt this :width))
+  (lev-height  [this] (.valAt this :heighth))
+  (lev-grid    [this] (.valAt this :gride))
+  (lev-weights [this] (.valAt this :weights)))
+
+(def l (->lev "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] []))
+;;hashmap version (note, the field length exceeds arraymap...)
+(def lm (into {} l))
+
+;; icfpc.bench> (c/quick-bench (lev-width l))
+;; Evaluation count : 93370056 in 6 samples of 15561676 calls.
+;;              Execution time mean : 4.529833 ns
+;;     Execution time std-deviation : 0.078534 ns
+;;    Execution time lower quantile : 4.453300 ns ( 2.5%)
+;;    Execution time upper quantile : 4.626149 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+;; icfpc.bench> (let [l {:width 10 :height 10 :grid 10 :weights 10}] (c/quick-bench (width l)))
+;; Evaluation count : 65143986 in 6 samples of 10857331 calls.
+;;              Execution time mean : 7.316122 ns
+;;     Execution time std-deviation : 0.097029 ns
+;;    Execution time lower quantile : 7.210819 ns ( 2.5%)
+;;    Execution time upper quantile : 7.409845 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+;; icfpc.bench> (c/quick-bench (.lev-width ^lev l))
+;; Evaluation count : 107930478 in 6 samples of 17988413 calls.
+;;              Execution time mean : 3.521487 ns
+;;     Execution time std-deviation : 0.123192 ns
+;;    Execution time lower quantile : 3.359547 ns ( 2.5%)
+;;    Execution time upper quantile : 3.662013 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+;; icfpc.bench> (c/quick-bench (.width ^lev l))
+;; Evaluation count : 104486472 in 6 samples of 17414412 calls.
+;;              Execution time mean : 3.545602 ns
+;;     Execution time std-deviation : 0.085816 ns
+;;    Execution time lower quantile : 3.407037 ns ( 2.5%)
+;;    Execution time upper quantile : 3.631632 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+;;icfpc.bench> (c/quick-bench (l :width))
+;; Evaluation count : 75303822 in 6 samples of 12550637 calls.
+;;              Execution time mean : 5.958670 ns
+;;     Execution time std-deviation : 0.059501 ns
+;;    Execution time lower quantile : 5.889378 ns ( 2.5%)
+;;    Execution time upper quantile : 6.036775 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+;; nil
+
+
+;;array maps with non-inlined protocol dispatch are 4.6x slower
+;; icfpc.bench> (c/quick-bench (lev-width lm))
+;; Evaluation count : 35475168 in 6 samples of 5912528 calls.
+;;              Execution time mean : 14.921462 ns
+;;     Execution time std-deviation : 0.150381 ns
+;;    Execution time lower quantile : 14.741645 ns ( 2.5%)
+;;    Execution time upper quantile : 15.067046 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+
+;;keyword lookups are about 8x slower...
+;; icfpc.bench> (c/quick-bench (:width lm))
+;; Evaluation count : 22123224 in 6 samples of 3687204 calls.
+;;              Execution time mean : 24.354733 ns
+;;     Execution time std-deviation : 0.495892 ns
+;;    Execution time lower quantile : 23.712388 ns ( 2.5%)
+;;    Execution time upper quantile : 24.888828 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+;; nil
+
+;;function application lookups are about 3.6x slower
+;; icfpc.bench> (c/quick-bench (lm :width))
+;; Evaluation count : 44544324 in 6 samples of 7424054 calls.
+;;              Execution time mean : 11.617911 ns
+;;     Execution time std-deviation : 0.247750 ns
+;;    Execution time lower quantile : 11.260342 ns ( 2.5%)
+;;    Execution time upper quantile : 11.882004 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+
+;;calls to clojure.core/get are ~10x slower, despite
+;;get being inlined.
+
+;; icfpc.bench> (c/quick-bench (get lm :width))
+;; Evaluation count : 19603224 in 6 samples of 3267204 calls.
+;;              Execution time mean : 29.265280 ns
+;;     Execution time std-deviation : 0.783067 ns
+;;    Execution time lower quantile : 27.942104 ns ( 2.5%)
+;;    Execution time upper quantile : 29.926778 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+;;direct method invocation is on par with function lookup,
+;;at 3.6x slower than field access or protocol invocation.
+
+;; icfpc.bench> (c/quick-bench (.valAt ^clojure.lang.Associative lm :width))
+;; Evaluation count : 44632860 in 6 samples of 7438810 calls.
+;;              Execution time mean : 11.389798 ns
+;;     Execution time std-deviation : 0.256336 ns
+;;    Execution time lower quantile : 11.100377 ns ( 2.5%)
+;;    Execution time upper quantile : 11.747791 ns (97.5%)
+;;                    Overhead used : 2.101342 ns
+
+
+;;So the story his is....for repeated reads, field access is
+;;king (duh) and is interchangeable with inlined protocol
+;;implementations that dispatch to the field (effectively an
+;;externally visible field access).  If you implement
+;;a function invocation for the record that mimics
+;;the implementation of .valAt, dispatching on
+;;fields first, you get pretty close to direct
+;;field access with function application, although
+;;a tiny bit slower 33% relative to field access#
+
+;;If using hashmaps, function application lookup
+;;faster, then some slight overhead of a protocol
+;;cache lookup,
+;;then is better than keyword invocation,
+;;which is better than calling get apparently.
+
+;;metrics may differ for arraymaps though.
+
+;;so right off the bat, we should get some performance
+;;improvement if we switch to protocols.
+
+
+;;compare map destructuring...
+(defn stuff [{:keys [width height]}]
+  width)
+
+;; Evaluation count : 8567238 in 6 samples of 1427873 calls.
+;;              Execution time mean : 68.463234 ns
+;;     Execution time std-deviation : 0.729966 ns
+;;    Execution time lower quantile : 67.198677 ns ( 2.5%)
+;;    Execution time upper quantile : 69.119342 ns (97.5%)
+;;                    Overhead used : 1.825577 ns
+
+(defn stuffraw [m]
+  (let [w (m :width)
+        h (m :height)]
+   w))
+
+;; Evaluation count : 32140476 in 6 samples of 5356746 calls.
+;;              Execution time mean : 17.080791 ns
+;;     Execution time std-deviation : 0.297715 ns
+;;    Execution time lower quantile : 16.765005 ns ( 2.5%)
+;;    Execution time upper quantile : 17.440539 ns (97.5%)
+;;                    Overhead used : 1.825577 ns
+
+
+(defn not-zero [n]
+  (not (zero? n)))
+
+;; Evaluation count : 132124596 in 6 samples of 22020766 calls.
+;;              Execution time mean : 2.839144 ns
+;;     Execution time std-deviation : 0.111993 ns
+;;    Execution time lower quantile : 2.705042 ns ( 2.5%)
+;;    Execution time upper quantile : 2.987240 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+(defn ne-zero [n]
+  (not= n 0))
+;; Evaluation count : 89775102 in 6 samples of 14962517 calls.
+;;              Execution time mean : 5.040152 ns
+;;     Execution time std-deviation : 0.257824 ns
+;;    Execution time lower quantile : 4.797250 ns ( 2.5%)
+;;    Execution time upper quantile : 5.354460 ns (97.5%)
+;; Overhead used : 1.787913 ns
+
+(defn neq-zero [n]
+  (not (== n 0)))
+
+;; Evaluation count : 82853334 in 6 samples of 13808889 calls.
+;;              Execution time mean : 5.685828 ns
+;;     Execution time std-deviation : 0.109642 ns
+;;    Execution time lower quantile : 5.503110 ns ( 2.5%)
+;;    Execution time upper quantile : 5.792646 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+
+;; Found 1 outliers in 6 samples (16.6667 %)
+;; 	low-severe	 1 (16.6667 %)
+;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+
+
+;;intersting numeric comparisons.
+
+;; icfpc.bench> (c/quick-bench (== icfpc.core/OBSTACLE  10))
+;; Evaluation count : 98036544 in 6 samples of 16339424 calls.
+;;              Execution time mean : 4.346203 ns
+;;     Execution time std-deviation : 0.069625 ns
+;;    Execution time lower quantile : 4.224626 ns ( 2.5%)
+;;    Execution time upper quantile : 4.404160 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+;; nil
+;; icfpc.bench> (c/quick-bench (identical? icfpc.core/OBSTACLE  10))
+;; Evaluation count : 114117066 in 6 samples of 19019511 calls.
+;;              Execution time mean : 3.511408 ns
+;;     Execution time std-deviation : 0.044961 ns
+;;    Execution time lower quantile : 3.452161 ns ( 2.5%)
+;;    Execution time upper quantile : 3.560770 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+;; nil
+;; icfpc.bench> (c/quick-bench (= icfpc.core/OBSTACLE  10))
+;; Evaluation count : 107691366 in 6 samples of 17948561 calls.
+;;              Execution time mean : 3.880414 ns
+;;     Execution time std-deviation : 0.055376 ns
+;;    Execution time lower quantile : 3.820468 ns ( 2.5%)
+;;    Execution time upper quantile : 3.959699 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+;; nil
+;; icfpc.bench> (c/quick-bench (= icfpc.core/OBSTACLE  10))
+
+(defmacro <*
+  "Evaluates exprs one at a time, from left to right, ensuring
+   < property holds"
+  {:added "1.0"}
+  ([x] true)
+  ([x y] `(< ~x ~y))
+  ([x y & next]
+   `(let [le# ~x]
+      (and (< ~x ~y)
+           (<* ~y ~@next)))))
+
+
+;; icfpc.bench> (c/quick-bench (< -1 2 3))
+;; Evaluation count : 17679474 in 6 samples of 2946579 calls.
+;;              Execution time mean : 33.098853 ns
+;;     Execution time std-deviation : 0.655936 ns
+;;    Execution time lower quantile : 32.031441 ns ( 2.5%)
+;;    Execution time upper quantile : 33.706702 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+
+
+;;macro-based comparison is 10x faster due to not
+;;using restfn for > 3 args.
+;; icfpc.bench> (c/quick-bench (<* -1 2 3))
+;; Evaluation count : 114145476 in 6 samples of 19024246 calls.
+;;              Execution time mean : 3.481508 ns
+;;     Execution time std-deviation : 0.032622 ns
+;;    Execution time lower quantile : 3.440453 ns ( 2.5%)
+;;    Execution time upper quantile : 3.516167 ns (97.5%)
+;;                    Overhead used : 1.787913 ns
+
+
+
+
+;; icfpc.bench> (c/quick-bench (icfpc.level/wxy->idx 100 10 10))
+;; Evaluation count : 129504678 in 6 samples of 21584113 calls.
+;;              Execution time mean : 2.424968 ns
+;;     Execution time std-deviation : 0.100511 ns
+;;    Execution time lower quantile : 2.287303 ns ( 2.5%)
+;;    Execution time upper quantile : 2.539626 ns (97.5%)
+;;                    Overhead used : 2.110365 ns
+
+;; Found 2 outliers in 6 samples (33.3333 %)
+;; 	low-severe	 1 (16.6667 %)
+;; 	low-mild	 1 (16.6667 %)
+;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+
+
+(def ilev (icfpc.core/->lev  "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] []))
+
+;;this gets called a ton.  The lookup to get the grids
+;;makes this 10x slower.  Note that in many cases,
+;;we're only operating on the width....
+
+;; icfpc.bench> (c/quick-bench (icfpc.core/coord->idx ilev 10 10))
+;; Evaluation count : 25814454 in 6 samples of 4302409 calls.
+;;              Execution time mean : 22.130189 ns
+;;     Execution time std-deviation : 1.135869 ns
+;;    Execution time lower quantile : 21.200341 ns ( 2.5%)
+;;    Execution time upper quantile : 23.957781 ns (97.5%)
+;;                    Overhead used : 2.110365 ns
+
+;; Found 1 outliers in 6 samples (16.6667 %)
+;; 	low-severe	 1 (16.6667 %)
+;;  Variance from outliers : 13.9208 % Variance is moderately inflated by outliers
+
+(defn wxy->idx [width x y]
+  (unchecked-add x (unchecked-multiply y width)))
+
+(defn pwxy->idx ^long [^long width ^long x ^long y]
+  (p/+ x (p/*  y  width)))

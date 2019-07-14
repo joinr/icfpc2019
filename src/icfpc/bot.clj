@@ -94,10 +94,10 @@
     (when (and
             (not (*disabled* TELEPORT))
             (booster-collected? level TELEPORT)
-            (not (contains? (:beakons level) [x y]))
+            (not (contains? (level :beakons) [x y]))
             (every?
               (fn [[bx by]] (>= (+ (Math/abs ^long (- x bx)) (Math/abs ^long (- y by))) 50))
-              (:beakons level)))
+              (level :beakons)))
       (-> level
         (spend :collected-boosters TELEPORT)
         (update :beakons (fnil conj []) [x y])
@@ -123,7 +123,7 @@
     (update-bot :path str action)))
 
 (defn jump [{:keys [bots] :as level} idx]
-  (when-some [[bx by] (nth (:beakons level) idx nil)]
+  (when-some [[bx by] (nth (level :beakons) idx nil)]
     (let [{:keys [x y]} (nth bots *bot*)]
       (when (not= [x y] [bx by])
         (-> level
@@ -153,9 +153,6 @@
     :jump2 (jump level 2)
     WAIT   (update-bot level :path str WAIT)))
 
-#_(defn <3 [x y z]
-  (and (< x y)
-       (< y z)))
 
 (defn can-step? [x y drill? drilled  level]
   (let [width (if (instance? icfpc.core.lev level)
@@ -165,8 +162,8 @@
                  (.height ^icfpc.core.lev level)
                  (.valAt ^clojure.lang.Associative level :height))]
     (and
-     (<3 -1 x width)
-     (<3 -1 y height)
+     (<* -1 x width)
+     (<* -1 y height)
      (or
       drill?
       (drilled (->Point x y))
@@ -291,9 +288,9 @@
               (add-fringe paths pos')
               (.add queue [path' pos' (spend fast) (spend drill) drilled']))
             ;; jumps
-            (doseq [[move pos'] [[:jump0 (nth (:beakons level) 0 nil)]
-                                 [:jump1 (nth (:beakons level) 1 nil)]
-                                 [:jump2 (nth (:beakons level) 2 nil)]]
+            (doseq [[move pos'] [[:jump0 (nth (level :beakons) 0 nil)]
+                                 [:jump1 (nth (level :beakons) 1 nil)]
+                                 [:jump2 (nth (level :beakons) 2 nil)]]
                     :when (some? pos')
                     ;;haven't visited [x y] yet.
                     :when (not (has-fringe? paths pos'))
@@ -342,9 +339,9 @@
               (#_add! .add paths pos')
               (.add queue [path' pos' (spend fast) (spend drill) drilled']))
             ;; jumps
-            (doseq [[move pos'] [[:jump0 (nth (:beakons level) 0 nil)]
-                                 [:jump1 (nth (:beakons level) 1 nil)]
-                                 [:jump2 (nth (:beakons level) 2 nil)]]
+            (doseq [[move pos'] [[:jump0 (nth (level :beakons) 0 nil)]
+                                 [:jump1 (nth (level :beakons) 1 nil)]
+                                 [:jump2 (nth (level :beakons) 2 nil)]]
                     :when (some? pos')
                     ;;haven't visited [x y] yet.
                     :when (not (.contains paths pos'))
@@ -397,7 +394,7 @@
             :let [v (get-level level x y)
                   booster (get boosters [x y])]]
         (cond+
-          :when-some [i (seek #(= [x y] [(:x (nth bots %)) (:y (nth bots %))])
+          :when-some [i (seek #(= [x y] [((nth bots %) :x ) ((nth bots %) :y)])
                           (range 0 (count bots)))]
           (if colored?
             (print (str "\033[97;101m" i "\033[0m"))
@@ -440,10 +437,10 @@
   ([{:keys [bots collected-boosters path] :as level}]
     (print-level level)
     (println "Active:"    (for [bot bots]
-                            (filterv #(pos? (second %)) (:active-boosters bot))))
+                            (filterv #(pos? (second %)) (bot :active-boosters))))
     (println "Collected:" collected-boosters)
     (println "Score:"     (level-score level))
-    (println "Zones:"     (mapv #(zone-char (:current-zone %)) bots)))
+    (println "Zones:"     (mapv #(zone-char (% :current-zone)) bots)))
   ([level delay]
     (println "\033[2J")
     (print-step level)
@@ -473,7 +470,7 @@
             (= 0 (zone-area level current-zone)))
       (let [taken        (set (map :current-zone bots))
             unfinished   (set
-                           (for [[zone area] (:zones-area level)
+                           (for [[zone area] (level :zones-area )
                                  :when (pos? area)]
                               zone))
             untaken      (set/difference unfinished taken)
@@ -489,18 +486,18 @@
 
 (defn advance* [level]
   (cond+
-    :let [bot (nth (:bots level) *bot*)]
+    :let [bot (nth (level :bots ) *bot*)]
 
     :when-some [level' (when *zones?* (choose-next-zone level))]
     (recur level')
 
-    :when-some [picked-booster (:picked-booster bot)]
+    :when-some [picked-booster (bot :picked-booster)]
     (recur
       (-> level
         (update :collected-boosters update picked-booster (fnil inc 0))
         (update-bot :picked-booster (constantly nil))))
 
-    :when-some [plan (not-empty (:plan bot))]
+    :when-some [plan (not-empty (bot :plan))]
     (let [action (first plan)
           level' (-> (act level action)
                    (wear-off-boosters))]
@@ -527,7 +524,7 @@
   (try
     (advance* level)
     (catch Exception e
-      (println "BOT" *bot* (nth (:bots level) *bot*))
+      (println "BOT" *bot* (nth (level :bots ) *bot*))
       (print-step level)
       (throw e))))
 
@@ -546,10 +543,10 @@
           (print-step level delay)
           (reset! *last-frame (System/currentTimeMillis)))
 
-        (if (= 0 (:empty level))
+        (if (= 0 (level :empty ))
           (do
             (when debug? (print-step level))
-            {:path  (str/join "#" (map :path (:bots level)))
+            {:path  (str/join "#" (map :path (level :bots) ))
              :score (level-score level)
              :time  (- (System/currentTimeMillis) t0)})
           (recur
@@ -557,9 +554,9 @@
               (fn [level i]
                 (binding [*bot* i]
                   (if-some [level' (advance level)]
-                    (if (= 0 (:empty level'))
+                    (if (= 0 (level' :empty))
                       (reduced level')
                       level')
                     level)))
               level
-              (range 0 (count (:bots level))))))))))
+              (range 0 (count (level :bots))))))))))
