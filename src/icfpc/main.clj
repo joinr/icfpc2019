@@ -68,6 +68,23 @@
         (throw e)
         (println "Failed" name "with" (type e) ":" (.getMessage e))))))
 
+(defn solve-elided [name & [{:keys [*left t0 throw?] :or {throw? true} :as opts}]]
+  (try
+    (let [level (level/load-level (str name ".desc"))
+          sln   (bot/solve level (merge {:debug? false} opts))
+          left  (some-> *left (swap! dec))]
+      (spit (str "problems/" name ".sol") (:path sln))
+      (log (when-some [t0 (:t0 opts)]
+             (str (- (System/currentTimeMillis) t0) "ms"))
+           (when (some? left)
+             (str "Left " left))
+           "Solved" name (dissoc sln :path) "was" #_(str/join " / " (compare-solutions name (:score sln))))
+      (:score sln))
+    (catch Exception e
+      (if (:throw? opts true)
+        (throw e)
+        (println "Failed" name "with" (type e) ":" (.getMessage e))))))
+
 (defn skip-till [n xs]
   (if (some? n) (drop n xs) xs))
 
