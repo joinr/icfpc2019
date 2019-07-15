@@ -37,7 +37,7 @@
                :bot/y))
 
 (defn next-hand [level]
-  (let [layout (-> level :bots (nth *bot*) :layout set)]
+  (let [layout (-> level :bots (nth (level :bot) ) :layout set)]
     (cond
       (contains? layout [1 0]) ;; rigth
       [1 (inc (apply max (map second layout)))]
@@ -62,7 +62,7 @@
         (update-bot :path str "B(" x "," y ")")))))
 
 (defn has-space? [{:keys [bots] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+  (let [{:keys [x y]} (nth bots (level :bot) )]
     (or
       (every? #(= EMPTY (get-level level (+ x %) y OBSTACLE)) (range 1 5))
       (every? #(= EMPTY (get-level level (- x %) y OBSTACLE)) (range 1 5))
@@ -91,7 +91,7 @@
       (update-bot :path str DRILL))))
 
 (defn set-beakon [{:keys [bots] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+  (let [{:keys [x y]} (nth bots (level :bot) )]
     (when (and
             (not (*disabled* TELEPORT))
             (booster-collected? level TELEPORT)
@@ -125,7 +125,7 @@
 
 (defn jump [{:keys [bots] :as level} idx]
   (when-some [[bx by] (nth (level :beakons) idx nil)]
-    (let [{:keys [x y]} (nth bots *bot*)]
+    (let [{:keys [x y]} (nth bots (level :bot) )]
       (when (not= [x y] [bx by])
         (-> level
           (update-bot :x (constantly bx))
@@ -134,7 +134,7 @@
           (update-bot :path str JUMP "(" bx "," by ")"))))))
 
 (defn reduplicate [{:keys [bots spawns] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+  (let [{:keys [x y]} (nth bots (level :bot) )]
     (when (and
             (booster-collected? level CLONE)
             (spawns [x y]))
@@ -208,14 +208,18 @@
         (->Point x' y')))))
 
 (defn rate [[x y] ^icfpc.core.lev level]
-  (let [;{:keys [boosters weights width height bots] :as level}
-        boosters (.boosters level)
+  (let [boosters (.boosters level)
         weights  (.weights level)
         width    (.width level)
         height   (.height level)
         bots     (.bots level)
-        {:keys [layout current-zone]} (nth bots *bot*)
-        zones? *zones?*]
+        bot      (.bot level)
+        zones?   (.zones? level)
+        #_{:keys [layout current-zone]}
+        botstate (nth bots bot)
+        layout       (.valAt ^clojure.lang.IPersistentMap botstate :layout)
+        current-zone (.valAt ^clojure.lang.IPersistentMap botstate :current-zone)
+        ]
     (cond
       (boosters [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
@@ -238,7 +242,7 @@
       :else 0)))
 
 #_(defn rate [[x y] {:keys [boosters weights width height bots] :as level}]
-  (let [{:keys [layout current-zone]} (nth bots *bot*)]
+  (let [{:keys [layout current-zone]} (nth bots (level :bot)  )]
     (cond
       (boosters [x y])
       (if (or (not *zones?*) (= current-zone (get-zone level x y))) 100 0)
@@ -333,7 +337,7 @@
 ;;drilled is a hashset.
 
 (defn explore* [{:keys [bots beakons width height] :as level} rate-fn]
-  (let [{:keys [x y active-boosters] :as bot} (nth bots *bot*)
+  (let [{:keys [x y active-boosters] :as bot} (nth bots (level :bot)  )
         ;;we're hashing a lot here....
         ;;paths is just a set of [x y] coordinates.
         ^icfpc.bot.IFringe paths (-> (->pooled-fringe width height) (add-fringe (->Point x y)))
@@ -387,7 +391,7 @@
         [best-path best-pos]))))
 
 #_(defn explore* [{:keys [bots beakons] :as level} rate-fn]
-  (let [{:keys [x y active-boosters]} (nth bots *bot*)
+  (let [{:keys [x y active-boosters]} (nth bots (level :bot)  )
         ;;we're hashing a lot here....
         ;;paths is just a set of [x y] coordinates.
         paths (doto (HashSet.) (.addAll [(->Point x y)]))
@@ -441,7 +445,7 @@
   (first (explore* level rate-fn)))
 
 (defn wait-off-fast [{:keys [bots] :as level}]
-  (let [{:keys [active-boosters x y]} (nth bots *bot*)
+  (let [{:keys [active-boosters x y]} (nth bots (level :bot)  )
         fast (active-boosters FAST_WHEELS 0)]
     (when (pos? fast)
       (repeat fast WAIT))))
@@ -519,25 +523,25 @@
     (when (some? delay)
       (Thread/sleep delay))))
 
-(defn collect-clone [{:keys [boosters collected-boosters] :as level}]
+(defn collect-clone [{:keys [boosters collected-boosters bot] :as level}]
   (when (and
-          (= 0 *bot*)
+          (= 0 bot )
           (= 0 (collected-boosters CLONE 0))
           (some (fn [[_ b]] (= b CLONE)) boosters))
     (explore level (fn [[x y] level]
                      (if (= (boosters [x y]) CLONE) 1 0)))))
 
-(defn goto-spawn [{:keys [bots spawns collected-boosters] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+(defn goto-spawn [{:keys [bot bots spawns collected-boosters] :as level}]
+  (let [{:keys [x y]} (nth bots (level :bot))]
     (when (and
-            (= 0 *bot*)
+            (= 0 bot )
             (pos? (collected-boosters CLONE 0))
             (not (spawns [x y])))
       (explore level (fn [[x y] level]
                        (if (spawns [x y]) 1 0))))))
 
 (defn choose-next-zone [{:keys [bots] :as level}]
-  (let [{:keys [current-zone]} (nth bots *bot*)]
+  (let [{:keys [current-zone]} (nth bots (level :bot)  )]
     (when (or (nil? current-zone)
             (= 0 (zone-area level current-zone)))
       (let [taken        (set (map :current-zone bots))
@@ -556,11 +560,14 @@
         (-> level
           (update-bot :current-zone (constantly (get-zone level x y)))))))) ;; TODO set path too
 
+;(definline nempty [coll]
+  
+
 (defn advance* [level]
   (cond+
-    :let [bot (nth (level :bots ) *bot*)]
+    :let [bot (nth (level :bots) (level :bot))]
 
-    :when-some [level' (when *zones?* (choose-next-zone level))]
+    :when-some [level' (when (level :zones?) #_*zones?* (choose-next-zone level))]
     (recur level')
 
     :when-some [picked-booster (bot :picked-booster)]
@@ -569,7 +576,7 @@
         (update :collected-boosters update picked-booster (fnil inc 0))
         (update-bot :picked-booster (constantly nil))))
 
-    :when-some [plan (not-empty (bot :plan))]
+    :when-some [plan #_(some-map (bot :plan)) (not-empty (bot :plan))]
     (let [action (first plan)
           level' (-> (act level action)
                    (wear-off-boosters))]
@@ -596,11 +603,44 @@
   (try
     (advance* level)
     (catch Exception e
-      (println "BOT" *bot* (nth (level :bots ) *bot*))
+      (println "BOT" (level :bot)  (nth (level :bots) (level :bot) ))
       (print-step level)
       (throw e))))
 
+;;all this delay stuff....probably doesn't show up in the rust version
 (defn solve [level & [{:keys [debug? delay disabled zones? explore-depth] :or {debug? true}}]]
+  (let [t0 (System/currentTimeMillis)
+        *last-frame (atom 0)]
+    (binding [*disabled*      (or disabled *disabled*)
+              *explore-depth* (or explore-depth *explore-depth*)
+              ;*zones?*        (if zones? zones? *zones?*)
+              ]
+      (loop [level (mark-wrapped (assoc level :bot 0 :zones? (or zones? *zones?*)))]
+        (when (.isInterrupted (Thread/currentThread))
+          (throw (InterruptedException.)))
+        (when (or (some? delay)
+                (and debug? (>= (- (System/currentTimeMillis) @*last-frame) 200)))
+          (print-step level delay)
+          (reset! *last-frame (System/currentTimeMillis)))
+
+        (if (zero? (level :empty))
+          (do
+            (when debug? (print-step level))
+            {:path  (str/join "#" (map :path (level :bots) ))
+             :score (level-score level)
+             :time  (- (System/currentTimeMillis) t0)})
+          (recur
+            (reduce
+              (fn [level i]
+                (if-some [level' (advance (assoc level :bot i))]
+                    (if (zero? (level' :empty))
+                      (reduced level')
+                      level')
+                    level))
+              level
+              (range 0 (count (level :bots))))))))))
+
+#_(defn solve [level & [{:keys [debug? delay disabled zones? explore-depth] :or {debug? true}}]]
   (let [t0 (System/currentTimeMillis)
         *last-frame (atom 0)]
     (binding [*disabled*      (or disabled *disabled*)

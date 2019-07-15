@@ -12,14 +12,22 @@
 (def ^:dynamic *bot*)
 
 (defn booster-active? [level booster]
-  (-> level :bots (nth *bot*) :active-boosters (get booster 0) pos?))
+  (-> level :bots (nth (level :bot) ) :active-boosters (get booster 0) pos?))
 
 (defn booster-collected? [level booster]
   (-> level :collected-boosters (get booster 0) pos?))
 
-(defn update-bot [level key f & args]
-  (apply update level :bots update *bot* update key f args))
+#_(defn update-bot [level key f & args]
+  (apply update level :bots update (level :bot) update key f args))
 
+(defmacro update-bot [level key f & args]
+  `(update ~level :bots
+     (fn [arg#]
+       (update arg# (~level :bot)
+         (fn [inner#]
+           (update inner# ~key (fn [final#]
+                                 (~f final# ~@args))))))))
+               
 ;;perf: using point records as keys to vector for coords.
 ;;called by valid-hand? frequently
 ;;point ctr fn could be inlined or macrofied...
@@ -74,7 +82,7 @@
               (not= OBSTACLE (get-level level x y))))
       level))
   ([{:keys [bots] :as level}]
-    (let [{:keys [x y]} (nth bots *bot*)]
+    (let [{:keys [x y]} (nth bots (level :bot) )]
       (valid? x y level))))
 
 (defn every-fast? [pred xs]
@@ -126,7 +134,7 @@
       level)))
 
 (defn bot-covering [{:keys [bots] :as level}]
-  (let [{:keys [x y layout]} (nth bots *bot*)]
+  (let [{:keys [x y layout]} (nth bots (level :bot)  )]
     (for [[dx dy] layout
           :when (if (= [0 0] [dx dy])
                   (valid? x y level)
@@ -134,7 +142,7 @@
       [(+ x dx) (+ y dy)])))
 
 (defn pick-booster [{:keys [bots boosters] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+  (let [{:keys [x y]} (nth bots (level :bot)  )]
     (if-some [booster (boosters [x y])]
       (-> level
         (update :boosters dissoc [x y])
@@ -144,13 +152,13 @@
 (defn wear-off-boosters [level]
   (cond-> level
     (booster-active? level FAST_WHEELS)
-    (update :bots update *bot* spend :active-boosters FAST_WHEELS)
+    (update :bots update (level :bot)  spend :active-boosters FAST_WHEELS)
 
     (booster-active? level DRILL)
-    (update :bots update *bot* spend :active-boosters DRILL)))
+    (update :bots update (level :bot)  spend :active-boosters DRILL)))
 
 (defn drill [{:keys [bots] :as level}]
-  (let [{:keys [x y]} (nth bots *bot*)]
+  (let [{:keys [x y]} (nth bots (level :bot)  )]
     (if (and (booster-active? level DRILL)
              (= OBSTACLE (get-level level x y)))
       (set-level level x y WRAPPED)

@@ -95,7 +95,8 @@
   (lev-width   [level])
   (lev-height  [level])
   (lev-grid    [level])
-  (lev-weights [level]))
+  (lev-weights [level])
+  (lev-zones   [level]))
 
 (defrecord lev
     [name
@@ -110,12 +111,15 @@
      collected-boosters
      spawns
      boosters
-     beakons]
+     beakons
+     bot
+     zones?]
   ILevel
   (lev-width   [this] width)
   (lev-height  [this] height)
   (lev-grid    [this] grid)
   (lev-weights [this] weights)
+  (lev-zones   [this] zones-grid)
   clojure.lang.IFn
   (invoke [this k] (case k
                      :name name
@@ -130,6 +134,8 @@
                      :spawns spawns
                      :boosters boosters
                      :beakons beakons
+                     :bot bot
+                     :zones? zones?
                      (.valAt this k)))
   (invoke [this k default]
     (case k
@@ -145,6 +151,8 @@
       :spawns spawns
       :boosters boosters
       :beakons beakons
+      :bot bot
+      :zones? zones?
       (.valAt this k default))))
 
 
@@ -152,14 +160,16 @@
     ILevel
   clojure.lang.PersistentArrayMap
   (lev-width   [this] (.valAt this :width))
-  (lev-height  [this] (.valAt this :heighth))
-  (lev-grid    [this] (.valAt this :gride))
+  (lev-height  [this] (.valAt this :height))
+  (lev-grid    [this] (.valAt this :grid))
   (lev-weights [this] (.valAt this :weights))
+  (lev-zones   [this] (.valAt this :zones-grid))
   clojure.lang.PersistentHashMap
   (lev-width   [this] (.valAt this :width))
-  (lev-height  [this] (.valAt this :heighth))
-  (lev-grid    [this] (.valAt this :gride))
-  (lev-weights [this] (.valAt this :weights)))
+  (lev-height  [this] (.valAt this :height))
+  (lev-grid    [this] (.valAt this :grid))
+  (lev-weights [this] (.valAt this :weights))
+  (lev-zones   [this] (.valAt this :zones-grid)))
     
 (def ^:const EMPTY (byte 0))
 (def ^:const OBSTACLE (byte 1))
@@ -214,22 +224,22 @@
   "blah"
   {:inline (fn
               ([level x y]
-               (let [bs (with-meta `(~level :grid) {:tag 'bytes})]
+               (let [bs (with-meta `(lev-grid ~level) {:tag 'bytes})]
                  `(aget ~bs (coord->idx ~level ~x ~y))))
               ([level x y default]
-               (let [bs (with-meta `(~level :grid) {:tag 'bytes})]
+               (let [bs (with-meta `(lev-grid ~level) {:tag 'bytes})]
                  `(if (and
-                       (< -1 ~x (~level :width))
-                       (< -1 ~y (~level :height)))
+                       (<* -1 ~x (lev-width ~level))
+                       (<* -1 ~y (lev-height ~level)))
                    (aget ~bs (coord->idx ~level ~x ~y))
                    ~default))))
     :inline-arities #{3 4}}
-  ([level x y]  (aget ^bytes (level :grid) (coord->idx level x y)))
+  ([level x y]  (aget ^bytes (lev-grid level) (coord->idx level x y)))
   ([level x y default]
    (if (and
-        (< -1 x (level :width))
-        (< -1 y (level :height )))
-     (aget ^bytes (level :grid) (coord->idx level x y))
+        (<* -1 x (lev-width  level))
+        (<* -1 y (lev-height level)))
+     (aget ^bytes (lev-grid level) (coord->idx level x y))
      default)))
   
 #_(defn set-level [level x y value]
@@ -237,17 +247,17 @@
   level)
 
 (definline set-level [level x y value]
-  `(do (aset ~(with-meta `(~level :grid) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
+  `(do (aset ~(with-meta `(lev-grid ~level) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
        ~level))
 
 #_(defn get-zone [level x y]
   (aget ^bytes (:zones-grid level) (coord->idx level x y)))
 
 (defn get-zone [level x y]
-  (aget ^bytes (:zones-grid level) (coord->idx level x y)))
+  (aget ^bytes (lev-zones level) (coord->idx level x y)))
 
 (defn zone-area [level zone]
-  ((:zones-area level) zone))
+  ((level :zones-area) zone))
 
 (defn seek [pred coll]
   (some #(if (pred %) %) coll))

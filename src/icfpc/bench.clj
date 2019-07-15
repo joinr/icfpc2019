@@ -358,74 +358,74 @@
 ;;core/get-level and core/coord->idx
 ;;are on hot paths, particularly in bot/explore...
 
-(defprotocol ILevel
-  (lev-width   [level])
-  (lev-height  [level])
-  (lev-grid    [level])
-  (lev-weights [level]))
+;; (defprotocol ILevel
+;;   (lev-width   [level])
+;;   (lev-height  [level])
+;;   (lev-grid    [level])
+;;   (lev-weights [level]))
 
-(defrecord lev [name
-                ^int  width
-                ^int  height
-                ^bytes grid
-                ^bytes zones-grid
-                zones-area
-                ^shorts weights
-                bots
-                empty
-                collected-boosters
-                spawns
-                boosters]
-  ILevel
-  (lev-width   [this] width)
-  (lev-height  [this] height)
-  (lev-grid    [this] grid)
-  (lev-weights [this] weights)
-  clojure.lang.IFn
-  (invoke [this k] (case k
-                     :name name
-                     :width width
-                     :grid grid
-                     :zones-grid zones-grid
-                     :zones-area zones-area
-                     :weights weights
-                     :bots bots
-                     :empty empty
-                     :collected-boosters collected-boosters
-                     :spawns spawns
-                     :boosters boosters
-                     (.valAt this k)))
-  (invoke [this k default]
-    (case k
-      :name name
-      :width width
-      :grid grid
-      :zones-grid zones-grid
-      :zones-area zones-area
-      :weights weights
-      :bots bots
-      :empty empty
-      :collected-boosters collected-boosters
-      :spawns spawns
-      :boosters boosters
-      (.valAt this k default))))
+;; (defrecord lev [name
+;;                 ^int  width
+;;                 ^int  height
+;;                 ^bytes grid
+;;                 ^bytes zones-grid
+;;                 zones-area
+;;                 ^shorts weights
+;;                 bots
+;;                 empty
+;;                 collected-boosters
+;;                 spawns
+;;                 boosters]
+;;   ILevel
+;;   (lev-width   [this] width)
+;;   (lev-height  [this] height)
+;;   (lev-grid    [this] grid)
+;;   (lev-weights [this] weights)
+;;   clojure.lang.IFn
+;;   (invoke [this k] (case k
+;;                      :name name
+;;                      :width width
+;;                      :grid grid
+;;                      :zones-grid zones-grid
+;;                      :zones-area zones-area
+;;                      :weights weights
+;;                      :bots bots
+;;                      :empty empty
+;;                      :collected-boosters collected-boosters
+;;                      :spawns spawns
+;;                      :boosters boosters
+;;                      (.valAt this k)))
+;;   (invoke [this k default]
+;;     (case k
+;;       :name name
+;;       :width width
+;;       :grid grid
+;;       :zones-grid zones-grid
+;;       :zones-area zones-area
+;;       :weights weights
+;;       :bots bots
+;;       :empty empty
+;;       :collected-boosters collected-boosters
+;;       :spawns spawns
+;;       :boosters boosters
+;;       (.valAt this k default))))
 
-(extend-protocol
-    ILevel
-  clojure.lang.PersistentArrayMap
-  (lev-width   [this] (.valAt this :width))
-  (lev-height  [this] (.valAt this :heighth))
-  (lev-grid    [this] (.valAt this :gride))
-  (lev-weights [this] (.valAt this :weights))
-  clojure.lang.PersistentHashMap
-  (lev-width   [this] (.valAt this :width))
-  (lev-height  [this] (.valAt this :heighth))
-  (lev-grid    [this] (.valAt this :gride))
-  (lev-weights [this] (.valAt this :weights)))
+;; (extend-protocol
+;;     ILevel
+;;   clojure.lang.PersistentArrayMap
+;;   (lev-width   [this] (.valAt this :width))
+;;   (lev-height  [this] (.valAt this :height))
+;;   (lev-grid    [this] (.valAt this :grid))
+;;   (lev-weights [this] (.valAt this :weights))
+;;   clojure.lang.PersistentHashMap
+;;   (lev-width   [this] (.valAt this :width))
+;;   (lev-height  [this] (.valAt this :height))
+;;   (lev-grid    [this] (.valAt this :grid))
+;;   (lev-weights [this] (.valAt this :weights)))
 
-(def l (->lev "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] []))
-;;hashmap version (note, the field length exceeds arraymap...)
-(def lm (into {} l))
+;; (def l (->lev "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] [] 0 true))
+;; ;;hashmap version (note, the field length exceeds arraymap...)
+;; (def lm (into {} l))
 
 ;; icfpc.bench> (c/quick-bench (lev-width l))
 ;; Evaluation count : 93370056 in 6 samples of 15561676 calls.
@@ -677,7 +677,7 @@
 ;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
 
 
-(def ilev (icfpc.core/->lev  "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] [] nil))
+;;(def ilev (icfpc.core/->lev  "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] [] nil))
 
 ;;this gets called a ton.  The lookup to get the grids
 ;;makes this 10x slower.  Note that in many cases,
