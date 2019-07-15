@@ -1,6 +1,8 @@
 ;;Testing a variety of search fringes
 ;;for the icfpc.bot/explore function.
-(ns icfpc.fringe)
+(ns icfpc.fringe
+  (:import [java.util HashSet]
+           [java.util.concurrent ConcurrentHashMap]))
 
 (defprotocol IFringe
   (has-fringe? [this o])
@@ -16,7 +18,7 @@
   `(unchecked-add ~x
     (unchecked-multiply ~y ~width)))
 
-(defn ->int-fringe [width]
+#_(defn ->int-fringe [width]
   (let [^io.lacuna.bifurcan.IntMap h  (.linear (io.lacuna.bifurcan.IntMap.))]
     (reify IFringe
       (has-fringe? [this  o]
@@ -25,7 +27,7 @@
         (do (.put h  ^int (widx  width (.x ^icfpc.core.Point o) (.y ^icfpc.core.Point o)) true)
             this)))))
 
-(defn ->lin-fringe []
+#_(defn ->lin-fringe []
   (let [^io.lacuna.bifurcan.LinearMap h  (io.lacuna.bifurcan.LinearMap.)]
     (reify IFringe
       (has-fringe? [this  o]
@@ -57,13 +59,13 @@
                    (java.util.Arrays/fill ^booleans (aget bits idx) false))
           fr)
       (let [fr (->bit-fringe w h)
-            _  (.put ^java.util.concurrent.ConcurrentHashMap pools k fr)]
+            _  (.put ^ConcurrentHashMap pools k fr)]
         fr))))
   
 (defn ->pooled-fringe [w h]
   (let [k (Thread/currentThread)]
-    (if-let [prior (.get ^java.util.concurrent.ConcurrentHashMap pools k)]
+    (if-let [prior (.get ^ConcurrentHashMap pools k)]
       (clear! k prior w h)
       (let [fr  (->bit-fringe w h)
-            _   (.put ^java.util.concurrent.ConcurrentHashMap pools k fr)]
+            _   (.put ^ConcurrentHashMap pools k fr)]
         fr))))
