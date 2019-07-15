@@ -47,11 +47,10 @@
   Object
   (toString [_] (str "(" x "," y ")"))
   ;;technique shamelessly borrowed from fastmath!
-  (equals [_ v]
+  (equals [this v]
     (and (instance? Point v)
-         (let [^Point v v]
-           (and (== x (.x v))
-                (== y (.y v))))))
+         (and (== x (.x ^Point v))
+              (== y (.y ^Point v)))))
   clojure.lang.IHashEq
   (hasheq [this]
     (if (== _hasheq (int -1))
@@ -86,6 +85,9 @@
   (entrySet [this] (set (seq {:x x :y y})))
   (keySet   [this] #{x y}))
 
+#_(definline ->Point [x y]
+  `(Point. (long ~x) (long ~y) -1 -1))
+
 (defn ->Point [x y]
   (Point. (long x) (long y) -1 -1))
 
@@ -107,7 +109,8 @@
      empty
      collected-boosters
      spawns
-     boosters]
+     boosters
+     beakons]
   ILevel
   (lev-width   [this] width)
   (lev-height  [this] height)
@@ -126,6 +129,7 @@
                      :collected-boosters collected-boosters
                      :spawns spawns
                      :boosters boosters
+                     :beakons beakons
                      (.valAt this k)))
   (invoke [this k default]
     (case k
@@ -140,6 +144,7 @@
       :collected-boosters collected-boosters
       :spawns spawns
       :boosters boosters
+      :beakons beakons
       (.valAt this k default))))
 
 
@@ -232,7 +237,7 @@
   level)
 
 (definline set-level [level x y value]
-  `(do (aset-byte (~level :grid) (coord->idx ~level ~x ~y) ~value)
+  `(do (aset ~(with-meta `(~level :grid) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
        ~level))
 
 #_(defn get-zone [level x y]

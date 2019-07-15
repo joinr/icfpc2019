@@ -4,7 +4,7 @@
   (:require [criterium.core :as c]
             [clj-tuple :as tup]
             [clojure.data.int-map :as i]
-            [icfpc [core :as ic :refer [->Point]] [level :as level] [bot :as bot]]
+            [icfpc [core :as ic :refer [->Point]] [level :as level] [bot :as bot] [bif :as b]]
             [primitive-math :as p]
             )
   (:import [java.util HashSet HashMap ArrayDeque]))
@@ -677,7 +677,7 @@
 ;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
 
 
-(def ilev (icfpc.core/->lev  "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] []))
+(def ilev (icfpc.core/->lev  "blah" 10 10 (byte-array 10) (byte-array 10) 10 (short-array 10) [] nil [] [] [] nil))
 
 ;;this gets called a ton.  The lookup to get the grids
 ;;makes this 10x slower.  Note that in many cases,
@@ -700,3 +700,63 @@
 
 (defn pwxy->idx ^long [^long width ^long x ^long y]
   (p/+ x (p/*  y  width)))
+
+
+;;hashset fun...
+;;Looking at getting more efficient hashing.
+;;Possibly faster eq...
+;;One big bottleneck is checking existence of points.
+
+(def ps (->> (slurp "points.edn")
+             clojure.edn/read-string
+             (map (fn [[{:keys [x y]} _]]
+                    (icfpc.core/->Point x y)))
+             (sort-by (juxt first second))
+             vec))
+
+;;how long does it take for us to hash stuff?
+
+;; icfpc.bench> (c/quick-bench (do (doto (HashSet.) (.addAll ps)) nil))
+;; Evaluation count : 30 in 6 samples of 5 calls.
+;;              Execution time mean : 21.327122 ms
+;;     Execution time std-deviation : 954.556715 µs
+;;    Execution time lower quantile : 20.588371 ms ( 2.5%)
+;;    Execution time upper quantile : 22.935103 ms (97.5%)
+;;                    Overhead used : 1.805194 ns
+
+;; Found 1 outliers in 6 samples (16.6667 %)
+;; 	low-severe	 1 (16.6667 %)
+;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+;; nil
+  
+;; icfpc.bench> (let [s (doto (HashSet.) (.addAll  ps)) p (nth ps 1000)] (c/quick-bench (.contains ^HashSet s p)))
+;; Evaluation count : 33819096 in 6 samples of 5636516 calls.
+;;              Execution time mean : 15.872475 ns
+;;     Execution time std-deviation : 0.256494 ns
+;;    Execution time lower quantile : 15.588379 ns ( 2.5%)
+;;    Execution time upper quantile : 16.157568 ns (97.5%)
+;;                    Overhead used : 1.805194 ns
+
+
+;; icfpc.bench> (c/quick-bench (do (io.lacuna.bifurcan.LinearSet/from ^java.lang.Iterable ps) nil))
+;; Evaluation count : 42 in 6 samples of 7 calls.
+;;              Execution time mean : 16.784856 ms
+;;     Execution time std-deviation : 986.423969 µs
+;;    Execution time lower quantile : 16.037391 ms ( 2.5%)
+;;    Execution time upper quantile : 18.381126 ms (97.5%)
+;;                    Overhead used : 1.805194 ns
+
+;; Found 1 outliers in 6 samples (16.6667 %)
+;; 	low-severe	 1 (16.6667 %)
+;;  Variance from outliers : 14.5722 % Variance is moderately inflated by outliers
+
+
+;; icfpc.bench> (let [s (apply b/->linear-set ps) p (nth ps 1000)] (c/quick-bench (.contains ^io.lacuna.bifurcan.LinearSet s p)))
+;; Evaluation count : 32065182 in 6 samples of 5344197 calls.
+;;              Execution time mean : 17.817323 ns
+;;     Execution time std-deviation : 1.445025 ns
+;;    Execution time lower quantile : 16.342552 ns ( 2.5%)
+;;    Execution time upper quantile : 19.974870 ns (97.5%)
+;;                    Overhead used : 1.805194 ns
+
+

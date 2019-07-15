@@ -183,11 +183,13 @@
           segments)))
 
 (defn fill-level [level corners obstacles]
-  (let [segments (sort-by :x (apply concat (into [(vertical-segments corners)] (map vertical-segments obstacles))))]
+  (let [segments (sort-by :x (apply concat (into [(vertical-segments corners)] (map vertical-segments) obstacles)))]
     (reduce (fn [level y]
-              (let [xs (map :x (filter (fn [{:keys [from-y to-y]}]
-                                         (and (<= from-y y) (< y to-y)))
-                                       segments))
+              (let [xs (map :x (filter (fn [m]
+                                         (let [from-y (m :from-y)
+                                               to-y   (m :to-y)]
+                                           (and (<= from-y y) (< y to-y))))
+                                         segments))
                     rs (take-nth 2 (partition 2 1 xs))]
                 (reduce (fn [level [from-x to-x]]
                           (reduce (fn [level x]
@@ -211,6 +213,8 @@
           :when (= b SPAWN)]
       [x y])))
 
+;;minor time sink for load-level, could
+;;be optimized by eliding the range...
 (defn weights [{:keys [width height] :as level}]
   (short-array
     (for [y (range 0 height)
@@ -231,6 +235,7 @@
     (filter #(valid-point? level %) [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]]))
 
 
+;;inline possibility here...
 (defn valid-point?
   ([{:keys [width height] :as level} xy]
    (valid-point? width height xy))
@@ -273,10 +278,6 @@
 (definline wxy->idx [width x y]
   `(unchecked-add ~x (unchecked-multiply ~y ~width)))
 
-(definline grid-byte
-  [grid width x y]
-  `(aget ~(with-meta grid {:tag 'bytes}) (wxy->idx ~width ~x ~y)))
-
 (defn get-byte
   {:inline (fn
              ([grid width x y]
@@ -301,10 +302,35 @@
   ([^bytes grid  idx  v]
    (aset  grid ^long idx  (byte v))))
 
-(defn get-zones [width height grid zone-grid points]
+(definline get-zones! [width height grid zone-grid points]
+  (let [xs (with-meta (gensym "xs") {:tag 'clojure.lang.ISeq})]
+    `(loop [end# true
+            ~xs  ~points]
+      (if-let [p# (.first ~xs)]
+        (let [[x# y#] p#
+              idx#  (wxy->idx ~width x# y#)]
+          (if (= (get-byte ~zone-grid idx#) 0)
+            (let [z# (zone? ~width ~height
+                           (fn ~'not-empty [[nx# ny#]]
+                             (let [nidx# (wxy->idx ~width nx# ny#)]
+                               (when (= EMPTY (get-byte ~grid nidx#))
+                                 (let [z# (get-byte ~zone-grid nidx#)]
+                                   (when (not (zero? z#))
+                                     z#)))))
+                           p#)]
+
+              (recur (if (some? z#)
+                       (do (set-byte ~zone-grid idx# z#)
+                           end#)
+                       false)
+                     (.more ~xs)))
+            (recur end# (.more ~xs))))
+        end#))))
+
+#_(defn get-zones! [width height grid zone-grid points]
   (loop [end? true
          xs   points]
-    (if-let [p (first xs)]
+    (if-let [p (.first ^clojure.lang.ISeq xs)]
       (let [[x y] p
             idx  (wxy->idx width x y)]
         (if (= (get-byte zone-grid idx) 0)
@@ -321,8 +347,8 @@
                      (do (set-byte zone-grid idx z)
                          end?)
                      false)
-                   (rest xs)))
-          (recur end? (rest xs))))
+                   (.more ^clojure.lang.ISeq xs)))
+          (recur end? (.more ^clojure.lang.ISeq xs))))
       end?)))
       
 (defn generate-zones [level bots]
@@ -349,33 +375,13 @@
                           centers)
         zones-map (loop [zones zones-map
                          iteration 0]
-                    (let [{:keys [zm end?]} (reduce (fn [acc [x y :as p]]
-                                                      (let [zm   (acc :zm)
-                                                            end? (acc :end?)
-                                                            idx  (wxy->idx width x y)]
-                                                        (if (= (get-byte zone-grid idx) 0)
-                                                          (let [z (zone? width height
-                                                                         (fn not-empty [[nx ny]]
-                                                                           (let [nidx (wxy->idx width nx ny)]
-                                                                             (when (= EMPTY (get-byte grid nidx))
-                                                                               (let [z (get-byte zone-grid nidx)]
-                                                                                 (when (not (zero? z))
-                                                                                   z)))))
-                                                                         p)]
-                                                            (if (some? z)
-                                                              {:zm (do (set-byte zone-grid idx z) zm)
-                                                               :end? end?}
-                                                              {:zm zm
-                                                               :end? false}))
-                                                          {:zm zm :end? end?})))
-                                                    {:zm zones :end? true}
-                                                    empty-points)]
+                    (let [end? (get-zones! width height grid zone-grid empty-points)]
                       (if (and (< iteration max-iteration-count) (not end?))
-                        (recur zm (unchecked-inc iteration))
+                        (recur zones (unchecked-inc iteration))
                         (do
                           (when (= iteration max-iteration-count)
                             (println "Can’t generate zones for" (level :name )))
-                          zm))))
+                          zones))))
         zones-area (into {}
                          (map
                           (fn [[z points]]

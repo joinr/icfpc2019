@@ -4,7 +4,8 @@
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
    [icfpc.core :refer :all]
-   [icfpc.level :refer :all])
+   [icfpc.level :refer :all]
+   [icfpc.bif])
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]))
 
@@ -100,7 +101,7 @@
               (level :beakons)))
       (-> level
         (spend :collected-boosters TELEPORT)
-        (update :beakons (fnil conj []) [x y])
+        (update :beakons (fnil conj []) #_(->Point x y) [x y])
         (update-bot :path str SET_BEAKON)))))
 
 (defn extra-move [level dx dy]
@@ -154,20 +155,28 @@
     WAIT   (update-bot level :path str WAIT)))
 
 
-(defn can-step? [x y drill? drilled  level]
-  (let [width (if (instance? icfpc.core.lev level)
-                (.width ^icfpc.core.lev level)
-                (.valAt ^clojure.lang.Associative level :width))
-        height (if (instance? icfpc.core.lev level)
-                 (.height ^icfpc.core.lev level)
-                 (.valAt ^clojure.lang.Associative level :height))]
-    (and
-     (<* -1 x width)
-     (<* -1 y height)
-     (or
-      drill?
-      (drilled (->Point x y))
-      (not= OBSTACLE (get-level level x y))))))
+(defn can-step?
+  [x y drill? drilled  ^icfpc.core.lev level]
+  (and
+   (<* -1 x (.width level))
+   (<* -1 y (.width level))
+   (or
+    drill?
+    (drilled (->Point x y))
+    (not= OBSTACLE (get-level level x y)))))
+
+#_(definline can-step?
+  [x y drill? drilled  level]
+  `(let [width#  (.width ~(with-meta  level {:tag 'icfpc.core.lev}))
+         height# (.height ~(with-meta level {:tag 'icfpc.core.lev}))]
+     (and
+      (<* -1 ~x width#)
+      (<* -1 ~y height#)
+      (or
+       ~drill?
+       (~drilled (->Point ~x ~y))
+       (not= OBSTACLE (get-level ~level ~x ~y))))))
+
 
 #_(defn can-step? [x y drill? drilled {:keys [width height] :as level}]
   (and
@@ -177,6 +186,16 @@
       drill?
       (drilled (->Point x y))
       (not= OBSTACLE (get-level level x y)))))
+
+#_(definline step [x y dx dy fast? drill? drilled level]
+  `(let [x'# (unchecked-add ~x ~dx) y'# (unchecked-add ~y ~dy)]
+     (when (can-step? x'# y'# ~drill? ~drilled ~level)
+       (if ~fast?
+         (let [x''# (unchecked-add x'# ~dx) y''# (unchecked-add y'# ~dy)]
+           (if (can-step? x''# y''# ~drill? ~drilled ~level)
+             (->Point x''# y''#)
+             (->Point x'# y'#)))
+         (->Point x'# y'#)))))
 
 (defn step [x y dx dy fast? drill? drilled level]
   (let [x' (+ x dx) y' (+ y dy)]
@@ -259,59 +278,112 @@
       (has-fringe? [this o] (.contains h o))
       (add-fringe [this o] (do (.add h o) this)))))
 
-(defn ->int-fringe []
+(definline widx [width x y]
+  `(unchecked-add ~x
+    (unchecked-multiply ~y ~width)))
+
+(defn ->int-fringe [width]
+  (let [^io.lacuna.bifurcan.IntMap h  (.linear (io.lacuna.bifurcan.IntMap.))]
+    (reify IFringe
+      (has-fringe? [this  o]
+        (.get h ^int (widx  width (.x ^icfpc.core.Point o) (.y ^icfpc.core.Point o))))
+      (add-fringe [this  o]
+        (do (.put h  ^int (widx  width (.x ^icfpc.core.Point o) (.y ^icfpc.core.Point o)) true)
+            this)))))
+
+(defn ->lin-fringe []
+  (let [^io.lacuna.bifurcan.LinearMap h  (io.lacuna.bifurcan.LinearMap.)]
+    (reify IFringe
+      (has-fringe? [this  o]
+        (.get h o))
+      (add-fringe [this   o]
+        (do (.put h o true)
+            this)))))
+
+(def prior (atom nil))
+
+(defn ->bit-fringe [w h]
+  (let [^"[[Z" bits (make-array Boolean/TYPE (long w) (long h))]
+    (reify IFringe
+      (has-fringe? [this   o]        
+        (aget ^booleans (aget bits (.nth ^clojure.lang.Indexed o 0))
+              (.nth ^clojure.lang.Indexed o 1)))
+      (add-fringe [this    o]
+        (aset ^booleans (aget bits (.nth  ^clojure.lang.Indexed  o 0))
+              (.nth ^clojure.lang.Indexed  o 1) true)
+        this)
+      clojure.lang.IFn
+      (invoke [this] bits))))
+
+(defn clear! [fr w h]
+  (let [^"[[Z" bits (fr)]
+    (if (and (= (alength bits) w)
+             (= (alength ^booleans (aget bits 0)) h))
+      (do (areduce bits idx res bits
+                   (java.util.Arrays/fill ^booleans (aget bits idx) false))
+          fr)
+      (reset! prior (->bit-fringe w h)))))
   
-  )
+(defn ->pooled-fringe [w h]
+  (if @prior
+    (clear! @prior w h)           
+    (reset! prior (->bit-fringe w h))))
   
-(defn explore* [{:keys [bots beakons] :as level} rate-fn]
-  (let [{:keys [x y active-boosters]} (nth bots *bot*)
+        
+;;drilled is a hashset.
+
+(defn explore* [{:keys [bots beakons width height] :as level} rate-fn]
+  (let [{:keys [x y active-boosters] :as bot} (nth bots *bot*)
         ;;we're hashing a lot here....
         ;;paths is just a set of [x y] coordinates.
-        paths (-> (->hash-fringe) (add-fringe (->Point x y)))
-        queue (doto (ArrayDeque.) (.addAll [[[] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{}]]))]
-    (loop [max-len   *explore-depth*
+        ^icfpc.bot.IFringe paths (-> (->pooled-fringe width height) (add-fringe (->Point x y)))
+        queue (doto (ArrayDeque.) (.addAll [[[] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{}]]))
+        explore-depth *explore-depth*]
+    (loop [max-len   explore-depth
            best-path nil
            best-pos  nil
-           best-rate (double 0)]
+           best-rate 0.0]
       (if-some [[path [x y :as pos] fast drill drilled :as move] (.poll queue)]
-        (if (< (count path) max-len)
-          ;; still exploring inside max-len
-          (do
-            ;; moves
-            (doseq [[move dx dy] [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]
-                    :let  [pos' (step x y dx dy (pos? fast) (pos? drill) drilled level)]
-                    :when (some? pos')
-                    ;;haven't visited [x y] yet.
-                    :when (not (has-fringe? paths pos')) 
-                    :let  [path'    (conj path move)
-                           drilled' (cond-> drilled (pos? drill) (conj pos'))]]
-              (add-fringe paths pos')
-              (.add queue [path' pos' (spend fast) (spend drill) drilled']))
-            ;; jumps
-            (doseq [[move pos'] [[:jump0 (nth (level :beakons) 0 nil)]
-                                 [:jump1 (nth (level :beakons) 1 nil)]
-                                 [:jump2 (nth (level :beakons) 2 nil)]]
-                    :when (some? pos')
-                    ;;haven't visited [x y] yet.
-                    :when (not (has-fringe? paths pos'))
-                    :let [path' (conj path move)]]
-              (add-fringe paths pos')
-              (.add queue [path' pos' (spend fast) (spend drill) drilled]))
-            (cond+
-              (empty? path)      (recur max-len best-path best-pos best-rate)
-              :let [rate (double (/ (rate-fn pos level) (count path)))]
-              (zero? rate)       (recur max-len best-path best-pos best-rate)
-              (zero? best-rate)  (recur max-len path pos rate)
-              (> rate best-rate) (recur max-len path pos rate)
-              (< rate best-rate) (recur max-len best-path best-pos best-rate)
-              (< (count path) (count best-path)) (recur max-len path pos rate)
-              :else (recur max-len best-path best-pos best-rate)))
-          ;; only paths with len > max-len left, maybe already have good solution?
-          (if (nil? best-path)
+        (let [path-length (.count ^clojure.lang.Counted path)]
+          (if (< path-length max-len)
+            ;; still exploring inside max-len
             (do
-              (.addFirst queue move)
-              (recur (+ max-len *explore-depth*) nil nil (double 0))) ;; not found anything, try expand
-            [best-path best-pos]))
+              ;; moves
+              (doseq [[move dx dy] [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]
+                      :let  [pos' (step x y dx dy (pos? fast) (pos? drill) drilled level)]
+                      :when (some? pos')
+                      ;;haven't visited [x y] yet.
+                      :when (not (.has-fringe? paths pos')) 
+                      :let  [path'    (conj path move)
+                             drilled' (cond-> drilled (pos? drill) (conj pos'))]]
+                (.add-fringe  paths pos')
+                (.add queue [path' pos' (spend fast) (spend drill) drilled']))
+              ;; jumps
+              (doseq [[move pos'] [[:jump0 (nth (level :beakons) 0 nil)]
+                                   [:jump1 (nth (level :beakons) 1 nil)]
+                                   [:jump2 (nth (level :beakons) 2 nil)]]
+                      :when (some? pos')
+                      ;;haven't visited [x y] yet.
+                      :when (not (has-fringe? paths pos'))
+                      :let [path' (conj path move)]]
+                (.add-fringe paths pos')
+                (.add queue [path' pos' (spend fast) (spend drill) drilled]))
+              (cond+
+               (zero? path-length) (recur max-len best-path best-pos best-rate)
+               :let [rate (/ (rate-fn pos level) (double  path-length))]
+               (zero? rate)       (recur max-len best-path best-pos best-rate)
+               (zero? best-rate)  (recur max-len path pos rate)
+               (> rate best-rate) (recur max-len path pos rate)
+               (< rate best-rate) (recur max-len best-path best-pos best-rate)
+               (< path-length     (.count ^clojure.lang.Counted  best-path)) (recur max-len path pos rate)
+               :else (recur max-len best-path best-pos best-rate)))
+            ;; only paths with len > max-len left, maybe already have good solution?
+            (if (nil? best-path)
+              (do
+                (.addFirst queue move)
+                (recur (unchecked-add #_+ max-len explore-depth) nil nil 0.0 #_(double 0))) ;; not found anything, try expand
+              [best-path best-pos])))
+        
         [best-path best-pos]))))
 
 #_(defn explore* [{:keys [bots beakons] :as level} rate-fn]
