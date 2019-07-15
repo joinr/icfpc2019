@@ -5,7 +5,7 @@
    [clojure.string :as str]
    [icfpc.core :refer :all]
    [icfpc.level :refer :all]
-   [icfpc.bif])
+   [icfpc.fringe :as fringe])
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]))
 
@@ -159,7 +159,7 @@
   [x y drill? drilled  ^icfpc.core.lev level]
   (and
    (<* -1 x (.width level))
-   (<* -1 y (.width level))
+   (<* -1 y (.height level))
    (or
     drill?
     (drilled (->Point x y))
@@ -272,67 +272,6 @@
 ;;       (swap! adds inc)
 ;;       (.add s v)))
 
-(defprotocol IFringe
-  (has-fringe? [this o])
-  (add-fringe  [this o]))
-
-(defn ->hash-fringe []
-  (let [h (HashSet.)]
-    (reify IFringe
-      (has-fringe? [this o] (.contains h o))
-      (add-fringe [this o] (do (.add h o) this)))))
-
-(definline widx [width x y]
-  `(unchecked-add ~x
-    (unchecked-multiply ~y ~width)))
-
-(defn ->int-fringe [width]
-  (let [^io.lacuna.bifurcan.IntMap h  (.linear (io.lacuna.bifurcan.IntMap.))]
-    (reify IFringe
-      (has-fringe? [this  o]
-        (.get h ^int (widx  width (.x ^icfpc.core.Point o) (.y ^icfpc.core.Point o))))
-      (add-fringe [this  o]
-        (do (.put h  ^int (widx  width (.x ^icfpc.core.Point o) (.y ^icfpc.core.Point o)) true)
-            this)))))
-
-(defn ->lin-fringe []
-  (let [^io.lacuna.bifurcan.LinearMap h  (io.lacuna.bifurcan.LinearMap.)]
-    (reify IFringe
-      (has-fringe? [this  o]
-        (.get h o))
-      (add-fringe [this   o]
-        (do (.put h o true)
-            this)))))
-
-(def prior (atom nil))
-
-(defn ->bit-fringe [w h]
-  (let [^"[[Z" bits (make-array Boolean/TYPE (long w) (long h))]
-    (reify IFringe
-      (has-fringe? [this   o]        
-        (aget ^booleans (aget bits (.nth ^clojure.lang.Indexed o 0))
-              (.nth ^clojure.lang.Indexed o 1)))
-      (add-fringe [this    o]
-        (aset ^booleans (aget bits (.nth  ^clojure.lang.Indexed  o 0))
-              (.nth ^clojure.lang.Indexed  o 1) true)
-        this)
-      clojure.lang.IFn
-      (invoke [this] bits))))
-
-(defn clear! [fr w h]
-  (let [^"[[Z" bits (fr)]
-    (if (and (= (alength bits) w)
-             (= (alength ^booleans (aget bits 0)) h))
-      (do (areduce bits idx res bits
-                   (java.util.Arrays/fill ^booleans (aget bits idx) false))
-          fr)
-      (reset! prior (->bit-fringe w h)))))
-  
-(defn ->pooled-fringe [w h]
-  (if @prior
-    (clear! @prior w h)           
-    (reset! prior (->bit-fringe w h))))
-  
         
 ;;drilled is a hashset.
 
@@ -340,7 +279,7 @@
   (let [{:keys [x y active-boosters] :as bot} (nth bots (level :bot)  )
         ;;we're hashing a lot here....
         ;;paths is just a set of [x y] coordinates.
-        ^icfpc.bot.IFringe paths (-> (->pooled-fringe width height) (add-fringe (->Point x y)))
+        ^icfpc.bot.fringe.IFringe paths (-> (fringe/->pooled-fringe width height) (add-fringe (->Point x y)))
         queue (doto (ArrayDeque.) (.addAll [[[] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{}]]))
         explore-depth *explore-depth*]
     (loop [max-len   explore-depth
