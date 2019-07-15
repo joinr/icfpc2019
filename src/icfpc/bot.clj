@@ -207,16 +207,18 @@
             (->Point x' y')))
         (->Point x' y')))))
 
-(defn rate [[x y] ^icfpc.core.lev level]
-  (let [boosters (.boosters level)
+(defn rate [^clojure.lang.Indexed xy ^icfpc.core.lev level]
+  (let [x (.nth xy 0)
+        y (.nth xy 1)
+        boosters (.boosters level)
         weights  (.weights level)
         width    (.width level)
         height   (.height level)
-        bots     (.bots level)
+        ^clojure.lang.Indexed bots     (.bots level)
         bot      (.bot level)
         zones?   (.zones? level)
         #_{:keys [layout current-zone]}
-        botstate     (nth bots bot)
+        botstate     (.nth bots bot)
         layout       (.valAt ^clojure.lang.IPersistentMap botstate :layout)
         current-zone (.valAt ^clojure.lang.IPersistentMap botstate :current-zone)
         ]
@@ -227,8 +229,11 @@
       ; (= EMPTY (get-level level x y)) 1
       :else
       (reduce
-        (fn [acc [dx dy]]
-          (let [x' (unchecked-add x dx) y' (unchecked-add y dy)]
+        (fn [acc ^clojure.lang.Indexed dxdy]
+          (let [dx (.nth dxdy 0)
+                dy (.nth dxdy 1)
+                x' (unchecked-add x dx)
+                y' (unchecked-add y dy)]
             (if (and
                   (or
                     (and (zero? dx) (zero? dy))
@@ -285,8 +290,7 @@
                       :let  [path'    (conj path move) ;;slow conj to vector.
                              drilled' (cond-> drilled (pos? drill) (conj pos'))]]
                 (.add-fringe  paths pos')
-                (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled')
-                            #_[path' pos' (spend fast) (spend drill) drilled']))
+                (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled')))
               ;; jumps
               (doseq [[move pos'] [[:jump0 b0]
                                    [:jump1 b1]
@@ -310,7 +314,7 @@
             (if (nil? best-path)
               (do
                 (.addFirst queue move)
-                (recur (unchecked-add  max-len explore-depth) nil nil 0.0))) ;; not found anything, try expand
+                (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
               [best-path best-pos])))
         
         [best-path best-pos]))))

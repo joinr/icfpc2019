@@ -96,7 +96,7 @@
 
 ;;perf: this is a hot spot
 ;;perf: dstructuring of map args costs "some"
-(defn valid-hand? [x y dx dy ^icfpc.core.lev level #_{:keys [width height] :as level}]
+(defn valid-hand? [x y dx dy ^icfpc.core.lev level]
   (let [width  (.width level)
         height (.height level)
         x' (unchecked-add x dx) y' (unchecked-add y dy)] ;;perf: hinted numeric ops could help here...
@@ -108,8 +108,8 @@
              ;;get-level.  Going though boxed comparison, possible optimization is (not (identical? ...))
              ;;destructuring in predicate incurs overhead.
              ;;possible boxed
-             (fn [[dx' dy']]
-               (obstacle? level x y dx' dy'))
+             (fn [^clojure.lang.Indexed dxdy]
+               (obstacle? level x y (.nth dxdy 0) #_dx' (.nth dxdy 1)#_dy'))
              #_(fn [[dx' dy']] (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
              ;;perf: ->Point constructor may be incurring overhead here and in
              ;;hand-blocks, which is a map being used for lookups.
