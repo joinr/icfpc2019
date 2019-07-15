@@ -270,37 +270,43 @@
            best-rate 0.0]
       (if-some [^icfpc.bot.botmove move (.poll queue)]
         (let [path          (.path move)
-              [x y :as pos] (.pos  move)
+              ^clojure.lang.Indexed pos           (.pos  move)
+              x             (.nth pos 0)
+              y             (.nth pos 1)
               fast          (.fast move)
               drill         (.drill move)
               drilled       (.drilled move)
-              path-length   (.count ^clojure.lang.Counted path)]
+              path-length   (.count ^clojure.lang.Counted path)
+              ]
           (if (< path-length max-len)
             ;; still exploring inside max-len
             (let [b0 (and beakons (.nth beakons 0 nil))
                   b1 (and beakons (.nth beakons 1 nil))
                   b2 (and beakons (.nth beakons 2 nil))]
               ;; moves
-              (doseq [[move dx dy] [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]
+              (doseq [^clojure.lang.Indexed mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
+                (let [move (.nth mv 0)
+                      dx   (.nth mv 1)
+                      dy   (.nth mv 2)
                       ;;this is a Point
-                      :let  [pos' (step x y dx dy (pos? fast) (pos? drill) drilled level)]
-                      :when (some? pos')
-                      ;;haven't visited [x y] yet.
-                      :when (not (.has-fringe? paths pos')) 
-                      :let  [path'    (conj path move) ;;slow conj to vector.
-                             drilled' (cond-> drilled (pos? drill) (conj pos'))]]
-                (.add-fringe  paths pos')
-                (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled')))
+                      pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
+                    (when (and (some? pos')
+                               ;;haven't visited [x y] yet.
+                               (not (.has-fringe? paths pos')))
+                      (let [path'    (conj path move) ;;slow conj to vector.
+                            drilled' (cond-> drilled (pos? drill) (conj pos'))]
+                        (.add-fringe  paths pos')
+                        (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
               ;; jumps
-              (doseq [[move pos'] [[:jump0 b0]
-                                   [:jump1 b1]
-                                   [:jump2 b2]]
-                      :when (some? pos')
-                      ;;haven't visited [x y] yet.
-                      :when (not (.has-fringe? paths pos'))
-                      :let [path' (conj path move)]]
-                (.add-fringe paths pos')
-                (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled)))
+              (doseq [^clojure.lang.Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
+                (let [move (.nth mv 0)
+                      pos' (.nth  mv 1)]
+                  (when (and  (some? pos')
+                              ;;haven't visited [x y] yet.
+                              (not (.has-fringe? paths pos')))
+                    (let [path' (conj path move)]
+                      (.add-fringe paths pos')
+                      (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled))))))
               (cond+
                (zero? path-length) (recur max-len best-path best-pos best-rate)
                :let [rate (/ (rate-fn pos level) (double  path-length))]
