@@ -8,7 +8,10 @@
    [icfpc.fringe :as fringe]
    [icfpc.speed :refer [with-slots]])
   (:import
-   [java.util Collection HashMap HashSet ArrayDeque]))
+   [java.util Collection HashMap HashSet ArrayDeque]
+   [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
+   [icfpc.core lev Point]
+   [icfpc.fringe IFringe]))
 
 (def ^:dynamic *disabled* #{})
 (def ^:dynamic *explore-depth* 5)
@@ -157,7 +160,7 @@
 
 
 (defn can-step?
-  [x y drill? drilled  ^icfpc.core.lev level]
+  [x y drill? drilled  ^lev level]
   (and
    (<* -1 x (.width level))
    (<* -1 y (.height level))
@@ -168,8 +171,8 @@
 
 #_(definline can-step?
   [x y drill? drilled  level]
-  `(let [width#  (.width ~(with-meta  level {:tag 'icfpc.core.lev}))
-         height# (.height ~(with-meta level {:tag 'icfpc.core.lev}))]
+  `(let [width#  (.width ~(with-meta  level {:tag 'lev}))
+         height# (.height ~(with-meta level {:tag 'lev}))]
      (and
       (<* -1 ~x width#)
       (<* -1 ~y height#)
@@ -209,9 +212,10 @@
         (->Point x' y')))))
 
 (defn rate [xy  level]
-  (with-slots [[x y] ^clojure.lang.Indexed xy
-               {:fields [boosters weights width height bots bot zones?]}  ^icfpc.core.lev level
-               {:keys   [layout current-zone]} (.nth ^clojure.lang.Indexed bots bot)]
+  (with-slots [[x y] ^Indexed xy
+               {:fields [boosters weights width height ^Indexed bots bot zones?]}
+                  ^lev level
+               {:keys   [layout current-zone]} (.nth bots bot)]
     (cond
       (boosters [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
@@ -219,46 +223,7 @@
       ; (= EMPTY (get-level level x y)) 1
       :else
       (reduce
-        (fn [acc ^clojure.lang.Indexed dxdy]
-          (let [dx (.nth dxdy 0)
-                dy (.nth dxdy 1)
-                x' (unchecked-add x dx)
-                y' (unchecked-add y dy)]
-            (if (and
-                  (or
-                    (and (zero? dx) (zero? dy))
-                    (valid-hand? x y dx dy level))
-                  (zero? (get-level level x' y'))
-                  (or (not zones?) (== current-zone (get-zone level x y))))
-              (unchecked-add acc (max 1 (aget ^shorts weights (coord->idx level x' y'))))
-              acc)))
-        0
-        layout)
-      :else 0)))
-
-#_(defn rate [^clojure.lang.Indexed xy ^icfpc.core.lev level]
-  (let [x (.nth xy 0)
-        y (.nth xy 1)
-        boosters (.boosters level)
-        weights  (.weights level)
-        width    (.width level)
-        height   (.height level)
-        ^clojure.lang.Indexed bots     (.bots level)
-        bot      (.bot level)
-        zones?   (.zones? level)
-        #_{:keys [layout current-zone]}
-        botstate     (.nth bots bot)
-        layout       (.valAt ^clojure.lang.IPersistentMap botstate :layout)
-        current-zone (.valAt ^clojure.lang.IPersistentMap botstate :current-zone)
-        ]
-    (cond
-      (boosters [x y])
-      (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
-      ; (= EMPTY (get-level level x y)) (max 1 (aget weights (coord->idx level x y)))
-      ; (= EMPTY (get-level level x y)) 1
-      :else
-      (reduce
-        (fn [acc ^clojure.lang.Indexed dxdy]
+        (fn [acc ^Indexed dxdy]
           (let [dx (.nth dxdy 0)
                 dy (.nth dxdy 1)
                 x' (unchecked-add x dx)
@@ -278,47 +243,35 @@
 ;;drilled is a persistent hashset.
 ;;we can probably improve drilled performance.
 
-(defrecord botmove [^clojure.lang.PersistentVector path ^icfpc.core.Point pos ^int fast ^int drill ^clojure.lang.IPersistentSet drilled])
+(defrecord botmove [^IPersistentVector path ^Point pos ^int fast ^int drill ^IPersistentSet drilled])
 
-
-(defn explore* [^icfpc.core.lev level rate-fn]
-  (let [width  (.width level)
-        height (.height level)
-        ^clojure.lang.Indexed bots   (.bots level)
-        bot    (.bot level)
-        ^clojure.lang.Indexed beakons (.beakons level)
-        {:keys [x y ^clojure.lang.IPersistentMap active-boosters] :as bot} (.nth bots bot)
-        ;;we're hashing a lot here....
-        ;;paths is just a set of [x y] coordinates.
-        ^icfpc.fringe.IFringe paths (-> (fringe/->pooled-fringe width height) (fringe/add-fringe (->Point x y)))
-        queue (doto (ArrayDeque.) (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
-        explore-depth *explore-depth*]
+(defn explore* [level rate-fn]
+  (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons]} ^lev level 
+               {:keys [x y ^IPersistentMap active-boosters] :as bot} (.nth bots bot)
+               ;;we're hashing a lot here....paths is just a set of [x y] coordinates.
+               ^IFringe paths (-> (fringe/->pooled-fringe width height)
+                                  (fringe/add-fringe (->Point x y)))
+               queue (doto (ArrayDeque.)
+                       (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
+               explore-depth *explore-depth*]
     (loop [max-len   explore-depth
            best-path nil
            best-pos  nil
            best-rate 0.0]
-      (if-some [^icfpc.bot.botmove move (.poll queue)]
-        (let [path          (.path move)
-              ^clojure.lang.Indexed pos           (.pos  move)
-              x             (.nth pos 0)
-              y             (.nth pos 1)
-              fast          (.fast move)
-              drill         (.drill move)
-              drilled       (.drilled move)
-              path-length   (.count ^clojure.lang.Counted path)
-              ]
+      (if-some [move (.poll queue)]
+        (with-slots [{:fields [^Counted path  ^Indexed pos fast drill drilled]} ^botmove move                                  
+                     [x y]         pos         
+                     path-length   (.count path)]
           (if (< path-length max-len)
             ;; still exploring inside max-len
             (let [b0 (and beakons (.nth beakons 0 nil))
                   b1 (and beakons (.nth beakons 1 nil))
                   b2 (and beakons (.nth beakons 2 nil))]
               ;; moves
-              (doseq [^clojure.lang.Indexed mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
-                (let [move (.nth mv 0)
-                      dx   (.nth mv 1)
-                      dy   (.nth mv 2)
-                      ;;this is a Point
-                      pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
+              (doseq [mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
+                (with-slots [[move dx dy] ^Indexed mv 
+                             ;;this is a Point
+                             pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
                     (when (and (some? pos')
                                ;;haven't visited [x y] yet.
                                (not (.has-fringe? paths pos')))
@@ -327,7 +280,7 @@
                         (.add-fringe  paths pos')
                         (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
               ;; jumps
-              (doseq [^clojure.lang.Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
+              (doseq [^Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
                 (let [move (.nth mv 0)
                       pos' (.nth  mv 1)]
                   (when (and  (some? pos')
@@ -343,7 +296,80 @@
                (zero? best-rate)  (recur max-len path pos rate)
                (> rate best-rate) (recur max-len path pos rate)
                (< rate best-rate) (recur max-len best-path best-pos best-rate)
-               (< path-length     (.count ^clojure.lang.Counted  best-path)) (recur max-len path pos rate)
+               (< path-length     (.count ^Counted  best-path)) (recur max-len path pos rate)
+               :else (recur max-len best-path best-pos best-rate)))
+            ;; only paths with len > max-len left, maybe already have good solution?
+            (if (nil? best-path)
+              (do
+                (.addFirst queue move)
+                (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
+              [best-path best-pos])))
+        
+        [best-path best-pos]))))
+
+#_(defn explore* [^lev level rate-fn]
+  (let [width  (.width level)
+        height (.height level)
+        ^Indexed bots   (.bots level)
+        bot    (.bot level)
+        ^Indexed beakons (.beakons level)
+        {:keys [x y ^IPersistentMap active-boosters] :as bot} (.nth bots bot)
+        ;;we're hashing a lot here....
+        ;;paths is just a set of [x y] coordinates.
+        ^icfpc.fringe.IFringe paths (-> (fringe/->pooled-fringe width height) (fringe/add-fringe (->Point x y)))
+        queue (doto (ArrayDeque.) (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
+        explore-depth *explore-depth*]
+    (loop [max-len   explore-depth
+           best-path nil
+           best-pos  nil
+           best-rate 0.0]
+      (if-some [^icfpc.bot.botmove move (.poll queue)]
+        (let [path          (.path move)
+              ^Indexed pos           (.pos  move)
+              x             (.nth pos 0)
+              y             (.nth pos 1)
+              fast          (.fast move)
+              drill         (.drill move)
+              drilled       (.drilled move)
+              path-length   (.count ^Counted path)
+              ]
+          (if (< path-length max-len)
+            ;; still exploring inside max-len
+            (let [b0 (and beakons (.nth beakons 0 nil))
+                  b1 (and beakons (.nth beakons 1 nil))
+                  b2 (and beakons (.nth beakons 2 nil))]
+              ;; moves
+              (doseq [^Indexed mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
+                (let [move (.nth mv 0)
+                      dx   (.nth mv 1)
+                      dy   (.nth mv 2)
+                      ;;this is a Point
+                      pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
+                    (when (and (some? pos')
+                               ;;haven't visited [x y] yet.
+                               (not (.has-fringe? paths pos')))
+                      (let [path'    (conj path move) ;;slow conj to vector.
+                            drilled' (cond-> drilled (pos? drill) (conj pos'))]
+                        (.add-fringe  paths pos')
+                        (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
+              ;; jumps
+              (doseq [^Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
+                (let [move (.nth mv 0)
+                      pos' (.nth  mv 1)]
+                  (when (and  (some? pos')
+                              ;;haven't visited [x y] yet.
+                              (not (.has-fringe? paths pos')))
+                    (let [path' (conj path move)]
+                      (.add-fringe paths pos')
+                      (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled))))))
+              (cond+
+               (zero? path-length) (recur max-len best-path best-pos best-rate)
+               :let [rate (/ (rate-fn pos level) (double  path-length))]
+               (zero? rate)       (recur max-len best-path best-pos best-rate)
+               (zero? best-rate)  (recur max-len path pos rate)
+               (> rate best-rate) (recur max-len path pos rate)
+               (< rate best-rate) (recur max-len best-path best-pos best-rate)
+               (< path-length     (.count ^Counted  best-path)) (recur max-len path pos rate)
                :else (recur max-len best-path best-pos best-rate)))
             ;; only paths with len > max-len left, maybe already have good solution?
             (if (nil? best-path)

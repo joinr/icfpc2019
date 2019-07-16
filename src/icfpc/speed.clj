@@ -144,10 +144,18 @@
         [_ bindings & body] &form
         n  (count bindings)]
     (cond (zero? n) `~(first body)
-          (= n 2)   (let [[l r]  bindings]
-                      `(with-fields ~l ~r ~@body))
+          (and (even? n)(pos? n)
+               (symbol? (first bindings)))
+          
+          (let [[l r] (take 2 bindings)]
+            `(let [~l ~r]
+               (with-slots ~(vec (drop 2 bindings)) ~@body)))
+          
+          (= n 2)  (let [[l r]  bindings]
+                     
+                       `(with-fields ~l ~r ~@body))
           (even? n)
-          (let [[l r] (vec (take 2 bindings))]
+          (let [[l r] (vec (take 2 bindings))]                         
             `(with-fields ~l ~r
                (with-slots ~(vec (drop 2 bindings)) ~@body)))
           :else (throw (ex-info "bindings must have an even number of entries!" {})))))
