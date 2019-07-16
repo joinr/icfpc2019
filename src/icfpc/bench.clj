@@ -760,3 +760,77 @@
 ;;                    Overhead used : 1.805194 ns
 
 
+
+
+;;exploring the overhead of instance checks...
+
+(comment
+  
+(let [x [1]]
+  (c/quick-bench (instance? clojure.lang.Indexed x)))
+
+(defn indexed [^clojure.lang.Indexed xy]
+  (let [x (.nth  xy 0)
+        y (.nth  xy 1)]
+    (+ 2 3)))
+
+;;fastest, but bloated...
+(defn indexhack [xy]
+  (if (instance? clojure.lang.Indexed xy)
+    (let [x (.nth ^clojure.lang.Indexed xy 0)
+          y (.nth ^clojure.lang.Indexed xy 1)]
+      (+ 2 3))
+    (let [x (nth xy 0)
+          y (nth xy 1)]
+      (+ 2 3))))
+
+;; icfpc.speed> (let [x [1 2]] (c/quick-bench (indexhack x)))
+;; Evaluation count : 83808372 in 6 samples of 13968062 calls.
+;;              Execution time mean : 5.389102 ns
+;;     Execution time std-deviation : 0.179385 ns
+;;    Execution time lower quantile : 5.105898 ns ( 2.5%)
+;;    Execution time upper quantile : 5.572797 ns (97.5%)
+;;                    Overhead used : 1.794404 ns
+
+;;still too slow, additional fn calls,
+;;wants to be inlined.
+(let [f1 (fn [^clojure.lang.Indexed xy]
+           (let [x (.nth  xy 0)
+                 y (.nth xy 1)]
+             (+ x y)))
+      f2 (fn [xy]
+           (let [x (nth  xy 0)
+                 y (nth xy 1)]
+             (+ x y)))]
+  (defn indexhack3 [xy]
+    (if (instance? clojure.lang.Indexed xy)
+      (f1 xy)
+      (f2 xy))))
+  
+(definline fast-nth [coll idx]
+  `(.nth ~(with-meta coll {:tag 'clojure.lang.Indexed}) ~idx))
+
+;;this is too slow.
+(defn indexhack2 [xy]
+  (let [idx?  (instance? clojure.lang.Indexed xy)
+        nf    (if idx? fast-nth nth)
+        x     (nf xy 0)
+        y     (nf xy 0)]
+    (+ x y)))
+       
+(defn normal [[x y]]
+  (+ x y))
+)
+
+;; icfpc.speed> (let [x [1 2]] (c/quick-bench (normal x)))
+;; Evaluation count : 27181620 in 6 samples of 4530270 calls.
+;;              Execution time mean : 20.106737 ns
+;;     Execution time std-deviation : 0.858973 ns
+;;    Execution time lower quantile : 19.096891 ns ( 2.5%)
+;;    Execution time upper quantile : 21.462080 ns (97.5%)
+;;                    Overhead used : 1.794404 ns
+
+;; Found 2 outliers in 6 samples (33.3333 %)
+;; 	low-severe	 1 (16.6667 %)
+;; 	low-mild	 1 (16.6667 %)
+;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers

@@ -5,7 +5,8 @@
    [clojure.string :as str]
    [icfpc.core :refer :all]
    [icfpc.level :refer :all]
-   [icfpc.fringe :as fringe])
+   [icfpc.fringe :as fringe]
+   [icfpc.speed :refer [with-slots]])
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]))
 
@@ -207,7 +208,35 @@
             (->Point x' y')))
         (->Point x' y')))))
 
-(defn rate [^clojure.lang.Indexed xy ^icfpc.core.lev level]
+(defn rate [xy  level]
+  (with-slots [[x y] ^clojure.lang.Indexed xy
+               {:fields [boosters weights width height bots bot zones?]}  ^icfpc.core.lev level
+               {:keys   [layout current-zone]} (.nth ^clojure.lang.Indexed bots bot)]
+    (cond
+      (boosters [x y])
+      (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
+      ; (= EMPTY (get-level level x y)) (max 1 (aget weights (coord->idx level x y)))
+      ; (= EMPTY (get-level level x y)) 1
+      :else
+      (reduce
+        (fn [acc ^clojure.lang.Indexed dxdy]
+          (let [dx (.nth dxdy 0)
+                dy (.nth dxdy 1)
+                x' (unchecked-add x dx)
+                y' (unchecked-add y dy)]
+            (if (and
+                  (or
+                    (and (zero? dx) (zero? dy))
+                    (valid-hand? x y dx dy level))
+                  (zero? (get-level level x' y'))
+                  (or (not zones?) (== current-zone (get-zone level x y))))
+              (unchecked-add acc (max 1 (aget ^shorts weights (coord->idx level x' y'))))
+              acc)))
+        0
+        layout)
+      :else 0)))
+
+#_(defn rate [^clojure.lang.Indexed xy ^icfpc.core.lev level]
   (let [x (.nth xy 0)
         y (.nth xy 1)
         boosters (.boosters level)

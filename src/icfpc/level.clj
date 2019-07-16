@@ -247,8 +247,10 @@
 (defn valid-point?
   ([{:keys [width height] :as level} xy]
    (valid-point? width height xy))
-  ([width height [x y]]
-   (and (<* -1 x width) (<* -1 y height))))
+  ([width height ^clojure.lang.Indexed xy]
+   (let [x (.nth xy 0)
+         y (.nth xy 1)]
+     (and (<* -1 x width) (<* -1 y height)))))
 
 (defn neighbours [level #_{:keys [width height] :as level} [x y]]
   (let [width  (level :width)
