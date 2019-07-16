@@ -225,8 +225,8 @@
            best-pos  nil
            best-rate 0.0]
       (if-some [move (.poll queue)]
-        (with-slots [{:fields [^Counted path  ^Indexed pos fast drill drilled]} ^botmove move                                  
-                     [x y]         pos         
+        (with-slots [{:fields [^Counted path pos fast drill drilled]} ^botmove move                                  
+                     [x y]          ^Indexed pos         
                      path-length   (.count path)]
           (if (< path-length max-len)
             ;; still exploring inside max-len
