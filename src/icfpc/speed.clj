@@ -27,6 +27,8 @@
 ;;        y (.y m)]
 ;;             )
 
+(def warn-on-generic (atom true))
+
 (defn flat-binds [xs]
   (reduce (fn [acc [l r]]
             (conj acc l r))
@@ -77,7 +79,7 @@
       `(~f ~coll ~k))))
 
 (defn slot-binds
-  ([coll get-slot flds]
+  ([coll get-slot flds]     
    (flat-binds
     (for [[idx f] (map-indexed vector flds)
           :when (not= f '_)]
@@ -105,6 +107,21 @@
       (throw (ex-info "duplicate fields or keys detected, check your destructuring form!"
                       {:shared shared })))))
 
+(defn generic-warning [fields coll]
+  (let [getter (cond (vector? fields) :nth
+                     (map? fields) :get)]
+    (println
+     [:with-slots.warning/using-generic
+      getter
+      :ns *ns*
+      :fields fields
+      :coll   coll
+      :try-hinting
+      (case getter
+        :nth
+        '[clojure.lang Indexed IPersistentVector java.util.List]
+        :get '[clojure.lang Associative IPersistentMap, java.util.Map])])))
+
 (defn as-binds
   ([fields coll]
    (let [tag    (or (some-> coll meta :tag name symbol)
@@ -118,6 +135,8 @@
    (let [tag (-> tagged meta :tag)]
      (cond  (= tag 'Object)
             (do (assert (not (:fields fields)) "cannot use :fields key with untyped object!")
+                (when @warn-on-generic
+                  (generic-warning fields coll))
                 `[~fields ~coll])
             (map? fields) ;;{:keys flds :as something}      
             (let [flds   (get fields :fields)
@@ -185,9 +204,9 @@
                                    re-use? (and (pos? @n)
                                                 (symbol? r))
                                    _ (swap! n inc)]
-                               (if re-use?
-                                 (as-binds r l r)
-                                 (as-binds l r)))))]
+                               (cond (symbol? l) [l r]
+                                     re-use?     (as-binds r l r)
+                                     :else       (as-binds l r)))))]
     res))
 
 (defmacro with-slots
@@ -266,7 +285,9 @@
      (macroexpand-all
       '(with-slots [{:fields [^clojure.lang.Counted path  ^clojure.lang.Indexed position]} ^botmove move                                  
                     [x y]         pos         
-                    path-length   (.count path)]
+                    path-length   (.count path)
+                    blah  2
+                    blee  (map inc (range 10))]
          2))))
   
   (with-slots [{:fields [^clojure.lang.Counted path

@@ -183,7 +183,7 @@
   (with-slots [[x y] ^Indexed xy
                {:fields [boosters weights width height ^Indexed bots bot zones?]}
                   ^lev level
-               {:keys   [layout current-zone]} (.nth bots bot)]
+               {:keys   [layout current-zone]} ^IPersistentMap (.nth bots bot)]
     (cond
       (boosters [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
@@ -213,11 +213,11 @@
 
 (defn explore* [level rate-fn]
   (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons]} ^lev level 
-               {:keys [x y ^IPersistentMap active-boosters] :as bot} (.nth bots bot)
+               {:keys [x y ^IPersistentMap active-boosters]} ^IPersistentMap (.nth bots bot)
                ;;we're hashing a lot here....paths is just a set of [x y] coordinates.
                ^IFringe paths (-> (fringe/->pooled-fringe width height)
                                   (fringe/add-fringe (->Point x y)))
-               queue (doto (ArrayDeque.)
+               ^java.util.ArrayDeque queue (doto (ArrayDeque.)
                        (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
                explore-depth *explore-depth*]
     (loop [max-len   explore-depth
@@ -225,8 +225,8 @@
            best-pos  nil
            best-rate 0.0]
       (if-some [move (.poll queue)]
-        (with-slots [{:fields [^Counted path pos fast drill drilled]} ^botmove move                                  
-                     [x y]          ^Indexed pos         
+        (with-slots [{:fields [^Counted path ^Indexed pos fast drill drilled]} ^botmove move                                  
+                     [x y]         pos         
                      path-length   (.count path)]
           (if (< path-length max-len)
             ;; still exploring inside max-len
