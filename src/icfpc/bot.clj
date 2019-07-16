@@ -169,38 +169,6 @@
     (drilled (->Point x y))
     (not= OBSTACLE (get-level level x y)))))
 
-#_(definline can-step?
-  [x y drill? drilled  level]
-  `(let [width#  (.width ~(with-meta  level {:tag 'lev}))
-         height# (.height ~(with-meta level {:tag 'lev}))]
-     (and
-      (<* -1 ~x width#)
-      (<* -1 ~y height#)
-      (or
-       ~drill?
-       (~drilled (->Point ~x ~y))
-       (not= OBSTACLE (get-level ~level ~x ~y))))))
-
-
-#_(defn can-step? [x y drill? drilled {:keys [width height] :as level}]
-  (and
-    (< -1 x width)
-    (< -1 y height)
-    (or
-      drill?
-      (drilled (->Point x y))
-      (not= OBSTACLE (get-level level x y)))))
-
-#_(definline step [x y dx dy fast? drill? drilled level]
-  `(let [x'# (unchecked-add ~x ~dx) y'# (unchecked-add ~y ~dy)]
-     (when (can-step? x'# y'# ~drill? ~drilled ~level)
-       (if ~fast?
-         (let [x''# (unchecked-add x'# ~dx) y''# (unchecked-add y'# ~dy)]
-           (if (can-step? x''# y''# ~drill? ~drilled ~level)
-             (->Point x''# y''#)
-             (->Point x'# y'#)))
-         (->Point x'# y'#)))))
-
 (defn step [x y dx dy fast? drill? drilled level]
   (let [x' (+ x dx) y' (+ y dy)]
     (when (can-step? x' y' drill? drilled level)
@@ -430,7 +398,7 @@
   (cond+
     :let [bot (nth (level :bots) (level :bot))]
 
-    :when-some [level' (when (level :zones?) #_*zones?* (choose-next-zone level))]
+    :when-some [level' (when (level :zones?) (choose-next-zone level))]
     (recur level')
 
     :when-some [picked-booster (bot :picked-booster)]
@@ -439,7 +407,7 @@
         (update :collected-boosters update picked-booster (fnil inc 0))
         (update-bot :picked-booster (constantly nil))))
 
-    :when-some [plan #_(some-map (bot :plan)) (not-empty (bot :plan))]
+    :when-some [plan (not-empty (bot :plan))]
     (let [action (first plan)
           level' (-> (act level action)
                    (wear-off-boosters))]

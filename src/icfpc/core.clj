@@ -277,42 +277,11 @@
      (get-byte (lev-grid level) x y)
      default)))
 
-#_(defn get-level
-  "blah"
-  {:inline (fn
-              ([level x y]
-               (let [bs (with-meta `(lev-grid ~level) {:tag 'bytes})]
-                 `(aget ~bs (coord->idx ~level ~x ~y))))
-              ([level x y default]
-               (let [bs (with-meta `(lev-grid ~level) {:tag 'bytes})]
-                 `(if (and
-                       (<* -1 ~x (lev-width ~level))
-                       (<* -1 ~y (lev-height ~level)))
-                   (aget ~bs (coord->idx ~level ~x ~y))
-                   ~default))))
-    :inline-arities #{3 4}}
-  ([level x y]  (aget ^bytes (lev-grid level) (coord->idx level x y)))
-  ([level x y default]
-   (if (and
-        (<* -1 x (lev-width  level))
-        (<* -1 y (lev-height level)))
-     (aget ^bytes (lev-grid level) (coord->idx level x y))
-     default)))
-  
-#_(defn set-level [level x y value]
-  (aset-byte (:grid level) (coord->idx level x y) value)
-  level)
-
 (definline set-level [level x y value]
   `(do (set-byte (lev-grid ~level) ~x ~y ~value)
-       #_(aset ~(with-meta `(lev-grid ~level) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
        ~level))
 
-#_(defn get-zone [level x y]
-  (aget ^bytes (:zones-grid level) (coord->idx level x y)))
-
 (defn get-zone [level x y]
-  #_(aget ^bytes (lev-zones level) (coord->idx level x y))
   (get-byte (lev-zones level) x y))
 
 (defn zone-area [level zone]
