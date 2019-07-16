@@ -340,8 +340,9 @@
 
 (defn arr-reduce2 [f init ^"[[B" arr]
   (reduce (fn [acc i]              
-            (let [^bytes arr (aget arr i)]
-              (arr-reduce f acc arr)))
+            (let [^bytes c (aget arr i)]
+              (arr-reduce f acc c)))
+          init
           (range (alength arr))))
 
 
