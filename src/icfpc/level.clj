@@ -4,11 +4,12 @@
    [clojure.string :as str]
    [icfpc.core :refer :all]
    [icfpc.parser :as parser]
-   [icfpc.writer :as writer]
-   #_[clojure.data/intmap :as i] )
+   [icfpc.speed :refer [with-slots]])
   (:import
-   [java.util Arrays]))
-
+   [java.util Arrays]
+   [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
+   [icfpc.core lev Point IByteMap]))
+  
 (def ^:dynamic *bot*)
 
 (defn booster-active? [level booster]
@@ -62,6 +63,9 @@
                             (for [y (range (int (Math/ceil (/ maxy 2.0))) (inc maxy))] [1 y])))])))
 
 
+;;We can just make this into an array lookup,
+;;no need for binary search....-1 is the outlier, handle
+;;it as a special case.
 (let [kvs      (sort-by (comp :y key) (seq hand-blocks-map))
       ^objects entries (object-array (map val kvs))
       ^ints ys (int-array (map (comp :y key) kvs))
@@ -247,9 +251,8 @@
 (defn valid-point?
   ([{:keys [width height] :as level} xy]
    (valid-point? width height xy))
-  ([width height ^clojure.lang.Indexed xy]
-   (let [x (.nth xy 0)
-         y (.nth xy 1)]
+  ([width height xy]
+   (with-slots  [[x y]  ^Indexed xy]
      (and (<* -1 x width) (<* -1 y height)))))
 
 (defn neighbours [level #_{:keys [width height] :as level} [x y]]
@@ -258,7 +261,19 @@
     (filter #(valid-point? width height %)
             [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))
 
-(definline zone? [width height keep? xy]
+(defn zone? [width height keep? xy]
+  (transduce (comp (comp (mapcat (fn expand [xy]
+                                   (with-slots [[x y] ^Indexed xy]
+                                     [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))
+                         (filter (fn valid [xy] (valid-point? width height xy))))
+                   (comp (keep keep?)
+                         (take 1)))
+             (completing (fn [acc x]
+                           (reduced x)))
+             nil
+             [xy]))
+
+#_(definline zone? [width height keep? xy]
   `(transduce (comp (comp (mapcat (fn ~'expand [[x# y#]]
                                     [[(inc x#) y#] [(dec x#) y#] [x# (inc y#)] [x# (dec y#)]]))
                           (filter (fn ~'valid [xy#] (valid-point? ~width ~height xy#))))
@@ -288,7 +303,7 @@
 (definline wxy->idx [width x y]
   `(unchecked-add ~x (unchecked-multiply ~y ~width)))
 
-(defn get-byte
+#_(defn get-byte
   {:inline (fn
              ([grid width x y]
               `(aget ~(with-meta grid {:tag 'bytes}) (wxy->idx ~width ~x ~y)))
@@ -300,7 +315,7 @@
   ([^bytes grid  ^long idx]
    (aget  grid idx)))
 
-(defn set-byte
+#_(defn set-byte
     {:inline (fn
              ([grid width x y v]
               `(aset ~(with-meta grid {:tag 'bytes}) (wxy->idx ~width ~x ~y) (byte ~v)))
@@ -312,7 +327,7 @@
   ([^bytes grid  idx  v]
    (aset  grid ^long idx  (byte v))))
 
-(definline get-zones! [width height grid zone-grid points]
+#_(definline get-zones! [width height grid zone-grid points]
   (let [xs (with-meta (gensym "xs") {:tag 'clojure.lang.ISeq})]
     `(loop [end# true
             ~xs  ~points]
@@ -341,18 +356,20 @@
   (loop [end? true
          xs   points]
     (if-let [p (.first ^clojure.lang.ISeq xs)]
-      (let [[x y] p
-            idx  (wxy->idx width x y)]
+      (with-slots
+            [[x y] ^Indexed p
+             idx  (wxy->idx width x y)]
         (if (= (get-byte zone-grid idx) 0)
           (let [z (zone? width height
-                         (fn not-empty [[nx ny]]
-                           (let [nidx (wxy->idx width nx ny)]
+                         (fn not-empty [nxny]
+                           (with-slots 
+                             [[nx ny] ^Indexed nxny
+                              nidx (wxy->idx width nx ny)]
                              (when (= EMPTY (get-byte grid nidx))
                                (let [z (get-byte zone-grid nidx)]
                                  (when (not (zero? z))
                                    z)))))
                          p)]
-
             (recur (if (some? z)
                      (do (set-byte zone-grid idx z)
                          end?)
@@ -360,6 +377,41 @@
                    (.more ^clojure.lang.ISeq xs)))
           (recur end? (.more ^clojure.lang.ISeq xs))))
       end?)))
+
+(definline get-zones! [width height grid zone-grid points]
+  (let [xs   (with-meta (gensym "xs")   {:tag 'clojure.lang.ISeq})
+        nxny (with-meta (gensym "nxny") {:tag 'Indexed})
+        p    (with-meta (gensym "p")    {:tag 'Indexed})]
+  `(loop [end?# true
+          ~xs   ~points]
+     (if-let [~p (.first ~xs)]
+       (with-slots
+         [[x# y#] ~p
+          ;idx#  (wxy->idx ~width x# y#)
+          ]
+         (if (= #_(get-byte ~zone-grid idx#)
+                (get-byte ~zone-grid x# y#)0)
+           (let [z# (zone? ~width ~height
+                          (fn ~'not-empty [~nxny]
+                            (with-slots 
+                              [[nx# ny#] ~nxny
+                               ;nidx# (wxy->idx ~width nx# ny#)
+                               ]
+                              (when (= EMPTY #_(get-byte ~grid nidx#)
+                                               (get-byte ~grid nx# ny#))
+                                (let [z# #_(get-byte ~zone-grid nidx#)
+                                         (get-byte ~zone-grid nx# ny#)]
+                                  (when (not (zero? z#))
+                                    z#)))))
+                          ~p)]
+            (recur (if (some? z#)
+                     (do #_(set-byte ~zone-grid idx# z#)
+                         (set-byte ~zone-grid x# y# z#)
+                         end?#)
+                     false)
+                   (.more ~xs)))
+           (recur end?# (.more ~xs))))
+       end?#))))
       
 (defn generate-zones [level bots]
   (let [width  (level :width )
@@ -368,19 +420,20 @@
         max-iteration-count (* width height)
         ;;these are all long pairs....
         empty-points (points-by-value level EMPTY)
-
         zones-count  bots
-
         centers (map-indexed (fn [idx z] [(inc idx) z]) (take zones-count (shuffle* empty-points)))
-        zone-grid (byte-array (* width height))
+        zone-grid (->byte-grid width height) #_(byte-array (* width height))
         zones-map {:width  width
                    :height height
                    :grid   zone-grid}
-        _ (java.util.Arrays/fill ^bytes zone-grid (byte 0))
+        _ #_(java.util.Arrays/fill ^bytes (zone-grid) #_zone-grid (byte 0))
+           (fill-bytes (zone-grid) 0)
 
-        zones-map (reduce (fn [zm [idx [x y]]]
-                            (do (set-byte zone-grid width x y idx)
-                                zm))
+        zones-map (reduce (fn [zm idx-xy]
+                            (with-slots [[idx ^Indexed xy] ^Indexed idx-xy
+                                         [x y]    xy]
+                              (do (set-byte zone-grid #_width x y idx)
+                                  zm)))
                           zones-map
                           centers)
         zones-map (loop [zones zones-map
@@ -394,12 +447,13 @@
                           zones))))
         zones-area (into {}
                          (map
-                          (fn [[z points]]
-                            [z (count points)])
+                          (fn [z-points]
+                            (with-slots [[z ^Counted points] ^Indexed z-points]
+                              [z (.count points)]))
                           (group-by first (for [x (range width)
                                                 y (range height)
-                                                :when (= EMPTY (get-byte grid width x y))]
-                                            [(get-byte zone-grid width x y) [x y]]))))
+                                                :when (= EMPTY (get-byte grid #_width x y))]
+                                            [(get-byte zone-grid #_width x y) [x y]]))))
         level (assoc level :zones-grid (zones-map :grid)
                            :zones-area zones-area)
         update-bot (fn [bot]
@@ -490,8 +544,9 @@
 (defn load-level [name]
   (let [{:keys [bot-point corners obstacles boosters]} (parser/parse-level name)
         [width height] (bounds corners)
-        grid       (make-array Byte/TYPE (* width height))
-        _          (java.util.Arrays/fill ^bytes grid ^Byte OBSTACLE)
+        grid       (->byte-grid width height) #_(make-array Byte/TYPE (* width height))
+        _          #_(java.util.Arrays/fill ^bytes (grid) #_grid ^Byte OBSTACLE)
+                   (fill-bytes (grid) OBSTACLE)
         init-level {:name     name
                     :width    width
                     :height   height
@@ -501,7 +556,7 @@
                     :collected-boosters {}
                     :bots     [(new-bot (first bot-point) (second bot-point))]}
         level (fill-level init-level corners obstacles)
-        empty (arr-reduce #(if (= EMPTY %2) (inc %1) %1) 0 grid)
+        empty (#_arr-reduce arr-reduce2  #(if (= EMPTY %2) (inc %1) %1) 0 (grid) #_grid)
         level (assoc level
                      :weights (weights level)
                      :empty   empty)

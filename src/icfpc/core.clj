@@ -98,12 +98,47 @@
   (lev-weights [level])
   (lev-zones   [level]))
 
+(definterface IByteMap
+  (getByte ^byte   [ ^int i ^int j])
+  (setByte ^byte   [ ^int i ^int j ^byte v])
+  (getBytes ^"[[B" []))
+
+(defn fill-bytes [^"[[B" bytes v]
+  (let [b (byte v)]
+    (do (areduce bytes idx res bytes
+                 (java.util.Arrays/fill ^bytes (aget bytes idx) b))
+        bytes)))
+
+(defn ->byte-grid [w h]
+  (let [^"[[B" bytes (make-array Byte/TYPE (long w) (long h))]
+    (reify IByteMap
+      (getByte [this  i j]        
+        (aget ^bytes (aget bytes i) j))
+      (setByte [this  i j v]
+        (aset ^bytes (aget bytes i)
+              j v)
+        this)
+      (getBytes [this] bytes)
+      clojure.lang.IFn
+      (invoke [this] bytes))))
+
+(definline get-byte  [bm i j]
+  (let [b (with-meta (gensym "bytemap") {:tag 'icfpc.core.IByteMap})]
+    `(let [~b ~bm]
+       (.getByte ~b (int ~i) (int ~j)))))
+
+(definline set-byte  [bm i j v]
+  (let [b (with-meta (gensym "bytemap") {:tag 'icfpc.core.IByteMap})]
+    `(let [~b ~bm]
+       (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
+
+
 (defrecord lev
     [name
      ^int  width
      ^int  height
-     ^bytes grid
-     ^bytes zones-grid
+     ^IByteMap grid
+     ^IByteMap zones-grid
      zones-area
      ^shorts weights
      bots
@@ -170,7 +205,7 @@
   (lev-grid    [this] (.valAt this :grid))
   (lev-weights [this] (.valAt this :weights))
   (lev-zones   [this] (.valAt this :zones-grid)))
-    
+
 (def ^:const EMPTY (byte 0))
 (def ^:const OBSTACLE (byte 1))
 (def ^:const WRAPPED (byte 2))
@@ -223,6 +258,28 @@
 (defn get-level
   "blah"
   {:inline (fn
+             ([level x y]
+              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+                `(.getByte ~b  ~x ~y)))
+             ([level x y default]
+              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+                `(if (and
+                      (<* -1 ~x (lev-width ~level))
+                      (<* -1 ~y (lev-height ~level)))
+                   (.getByte  ~b ~x ~y)
+                 ~default))))
+    :inline-arities #{3 4}}
+  ([level x y]  (get-byte (lev-grid level)  x y))
+  ([level x y default]
+   (if (and
+        (<* -1 x (lev-width  level))
+        (<* -1 y (lev-height level)))
+     (get-byte (lev-grid level) x y)
+     default)))
+
+#_(defn get-level
+  "blah"
+  {:inline (fn
               ([level x y]
                (let [bs (with-meta `(lev-grid ~level) {:tag 'bytes})]
                  `(aget ~bs (coord->idx ~level ~x ~y))))
@@ -247,14 +304,16 @@
   level)
 
 (definline set-level [level x y value]
-  `(do (aset ~(with-meta `(lev-grid ~level) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
+  `(do (set-byte (lev-grid ~level) ~x ~y ~value)
+       #_(aset ~(with-meta `(lev-grid ~level) {:tag 'bytes}) (coord->idx ~level ~x ~y) (byte ~value))
        ~level))
 
 #_(defn get-zone [level x y]
   (aget ^bytes (:zones-grid level) (coord->idx level x y)))
 
 (defn get-zone [level x y]
-  (aget ^bytes (lev-zones level) (coord->idx level x y)))
+  #_(aget ^bytes (lev-zones level) (coord->idx level x y))
+  (get-byte (lev-zones level) x y))
 
 (defn zone-area [level zone]
   ((level :zones-area) zone))
@@ -275,6 +334,16 @@
     (map #(path-score (:path %)))
     (reduce max)))
 
-(defn arr-reduce [f init ^bytes arr]
+(defn arr-reduce [f init ^bytes arr]     
   (areduce arr i ret init
-    (f ret (aget arr i))))
+           (f ret (aget arr i))))
+
+(defn arr-reduce2 [f init ^"[[B" arr]
+  (reduce (fn [acc i]              
+            (let [^bytes arr (aget arr i)]
+              (arr-reduce f acc arr)))
+          (range (alength arr))))
+
+
+
+
