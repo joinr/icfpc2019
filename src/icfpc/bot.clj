@@ -219,15 +219,13 @@
     (cond
       (boosters [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
-      ; (= EMPTY (get-level level x y)) (max 1 (aget weights (coord->idx level x y)))
-      ; (= EMPTY (get-level level x y)) 1
       :else
       (reduce
-        (fn [acc ^Indexed dxdy]
-          (let [dx (.nth dxdy 0)
-                dy (.nth dxdy 1)
-                x' (unchecked-add x dx)
-                y' (unchecked-add y dy)]
+        (fn [acc  dxdy]
+          (with-slots
+            [[dx dy] ^Indexed dxdy
+             x' (unchecked-add x dx)
+             y' (unchecked-add y dy)]
             (if (and
                   (or
                     (and (zero? dx) (zero? dy))
@@ -303,132 +301,7 @@
               (do
                 (.addFirst queue move)
                 (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
-              [best-path best-pos])))
-        
-        [best-path best-pos]))))
-
-#_(defn explore* [^lev level rate-fn]
-  (let [width  (.width level)
-        height (.height level)
-        ^Indexed bots   (.bots level)
-        bot    (.bot level)
-        ^Indexed beakons (.beakons level)
-        {:keys [x y ^IPersistentMap active-boosters] :as bot} (.nth bots bot)
-        ;;we're hashing a lot here....
-        ;;paths is just a set of [x y] coordinates.
-        ^icfpc.fringe.IFringe paths (-> (fringe/->pooled-fringe width height) (fringe/add-fringe (->Point x y)))
-        queue (doto (ArrayDeque.) (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
-        explore-depth *explore-depth*]
-    (loop [max-len   explore-depth
-           best-path nil
-           best-pos  nil
-           best-rate 0.0]
-      (if-some [^icfpc.bot.botmove move (.poll queue)]
-        (let [path          (.path move)
-              ^Indexed pos           (.pos  move)
-              x             (.nth pos 0)
-              y             (.nth pos 1)
-              fast          (.fast move)
-              drill         (.drill move)
-              drilled       (.drilled move)
-              path-length   (.count ^Counted path)
-              ]
-          (if (< path-length max-len)
-            ;; still exploring inside max-len
-            (let [b0 (and beakons (.nth beakons 0 nil))
-                  b1 (and beakons (.nth beakons 1 nil))
-                  b2 (and beakons (.nth beakons 2 nil))]
-              ;; moves
-              (doseq [^Indexed mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
-                (let [move (.nth mv 0)
-                      dx   (.nth mv 1)
-                      dy   (.nth mv 2)
-                      ;;this is a Point
-                      pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
-                    (when (and (some? pos')
-                               ;;haven't visited [x y] yet.
-                               (not (.has-fringe? paths pos')))
-                      (let [path'    (conj path move) ;;slow conj to vector.
-                            drilled' (cond-> drilled (pos? drill) (conj pos'))]
-                        (.add-fringe  paths pos')
-                        (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
-              ;; jumps
-              (doseq [^Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
-                (let [move (.nth mv 0)
-                      pos' (.nth  mv 1)]
-                  (when (and  (some? pos')
-                              ;;haven't visited [x y] yet.
-                              (not (.has-fringe? paths pos')))
-                    (let [path' (conj path move)]
-                      (.add-fringe paths pos')
-                      (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled))))))
-              (cond+
-               (zero? path-length) (recur max-len best-path best-pos best-rate)
-               :let [rate (/ (rate-fn pos level) (double  path-length))]
-               (zero? rate)       (recur max-len best-path best-pos best-rate)
-               (zero? best-rate)  (recur max-len path pos rate)
-               (> rate best-rate) (recur max-len path pos rate)
-               (< rate best-rate) (recur max-len best-path best-pos best-rate)
-               (< path-length     (.count ^Counted  best-path)) (recur max-len path pos rate)
-               :else (recur max-len best-path best-pos best-rate)))
-            ;; only paths with len > max-len left, maybe already have good solution?
-            (if (nil? best-path)
-              (do
-                (.addFirst queue move)
-                (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
-              [best-path best-pos])))
-        
-        [best-path best-pos]))))
-
-#_(defn explore* [{:keys [bots beakons] :as level} rate-fn]
-  (let [{:keys [x y active-boosters]} (nth bots (level :bot)  )
-        ;;we're hashing a lot here....
-        ;;paths is just a set of [x y] coordinates.
-        paths (doto (HashSet.) (.addAll [(->Point x y)]))
-        queue (doto (ArrayDeque.) (.addAll [[[] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{}]]))]
-    (loop [max-len   *explore-depth*
-           best-path nil
-           best-pos  nil
-           best-rate (double 0)]
-      (if-some [[path [x y :as pos] fast drill drilled :as move] (.poll queue)]
-        (if (< (count path) max-len)
-          ;; still exploring inside max-len
-          (do
-            ;; moves
-            (doseq [[move dx dy] [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]
-                    :let  [pos' (step x y dx dy (pos? fast) (pos? drill) drilled level)]
-                    :when (some? pos')
-                    ;;haven't visited [x y] yet.
-                    :when (not (.contains paths pos')) 
-                    :let  [path'    (conj path move)
-                           drilled' (cond-> drilled (pos? drill) (conj pos'))]]
-              (#_add! .add paths pos')
-              (.add queue [path' pos' (spend fast) (spend drill) drilled']))
-            ;; jumps
-            (doseq [[move pos'] [[:jump0 (nth (level :beakons) 0 nil)]
-                                 [:jump1 (nth (level :beakons) 1 nil)]
-                                 [:jump2 (nth (level :beakons) 2 nil)]]
-                    :when (some? pos')
-                    ;;haven't visited [x y] yet.
-                    :when (not (.contains paths pos'))
-                    :let [path' (conj path move)]]
-              (.add paths pos')
-              (.add queue [path' pos' (spend fast) (spend drill) drilled]))
-            (cond+
-              (empty? path)      (recur max-len best-path best-pos best-rate)
-              :let [rate (double (/ (rate-fn pos level) (count path)))]
-              (zero? rate)       (recur max-len best-path best-pos best-rate)
-              (zero? best-rate)  (recur max-len path pos rate)
-              (> rate best-rate) (recur max-len path pos rate)
-              (< rate best-rate) (recur max-len best-path best-pos best-rate)
-              (< (count path) (count best-path)) (recur max-len path pos rate)
-              :else (recur max-len best-path best-pos best-rate)))
-          ;; only paths with len > max-len left, maybe already have good solution?
-          (if (nil? best-path)
-            (do
-              (.addFirst queue move)
-              (recur (+ max-len *explore-depth*) nil nil (double 0))) ;; not found anything, try expand
-            [best-path best-pos]))
+              [best-path best-pos])))        
         [best-path best-pos]))))
 
 (defn explore [level rate-fn]
