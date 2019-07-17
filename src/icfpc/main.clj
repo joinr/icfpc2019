@@ -125,6 +125,38 @@
     (log "DONE in" (- (System/currentTimeMillis) t0) " ms")
     (.shutdown executor)))
 
+(defn main-elided [& [from till threads]]
+  (clear)
+  (let [re    (case java.io.File/separator
+                "\\" #".*\\(prob-\d\d\d)\.desc"
+                #".*/(prob-\d\d\d)\.desc")
+        from  (cond-> from (string? from) (Integer/parseInt))
+        till  (cond-> till (string? till) (Integer/parseInt))
+        names (->> (file-seq (io/file "problems"))
+                   (map #(.getPath ^File %))
+                   (filter #(str/ends-with? % ".desc"))
+                   (keep #(second (re-matches re %)))
+                   sort
+                 (take-till till)
+                 (skip-till from)
+                 (remove #(.exists (io/file (str "problems/" % ".sol")))))
+        t0       (System/currentTimeMillis)
+        threads  (or (cond-> threads (string? threads) (Integer/parseInt))
+                   (.. Runtime getRuntime availableProcessors))
+        executor (java.util.concurrent.Executors/newFixedThreadPool threads)
+        *left    (atom (count names))]
+    (log "Running" threads "threads, solving" (count names) "tasks")
+    (->
+      (into-array CompletableFuture
+        (for [name names]
+          (CompletableFuture/runAsync
+            ^Runnable (bound-fn [] (solve-elided name {:t0 t0 :throw? false :*left *left}))
+            executor)))
+      (CompletableFuture/allOf)
+      (.join))
+    (log "DONE in" (- (System/currentTimeMillis) t0) " ms")
+    (.shutdown executor)))
+
 (defn -main [& [from till threads]]
   (gen-buys)
   (main from till threads)
