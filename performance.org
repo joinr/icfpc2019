@@ -1,10 +1,188 @@
+
+* Preeveeyit Clojure
+
+This is an ad-hoc examination of some extant clojure code
+as mentioned at 
+https://www.reddit.com/r/Clojure/comments/cb02xs/datascriptrum_author_goodbye_clojure_same_loc_17x/
+and https://www.reddit.com/r/Clojure/comments/cb02xs/datascriptrum_author_goodbye_clojure_same_loc_17x/etf6nep/
+with the original repository at https://github.com/tonsky/icfpc2019
+with a rust version at https://github.com/tonsky/icfpc2019-rust .
+
+I was curious to see what kind of starting point the code base would have,
+and whether some relatively low-hanging performance techniques would be
+applicable to get any improvement.  So far, the results have been decent.
+
+On my machine, an 8-core i7-6700 HQ 2.6GHZ, with 16 GB of RAM on
+Windows 10, Java 1.8 64 bit, and no changes to the original project
+options (e.g. default 4GB max heap, default GC, main uses 8 threads),
+I got the following results running icpfc.main/main-elided in the
+(slightly modified) baseline branch:
+
+841604ms Left 7 Solved prob-291 {:score 8883, :time 165823} was
+861677ms Left 6 Solved prob-297 {:score 4490, :time 51607} was
+865518ms Left 5 Solved prob-293 {:score 9953, :time 161972} was
+873999ms Left 4 Solved prob-294 {:score 9694, :time 123668} was
+905765ms Left 3 Solved prob-295 {:score 7670, :time 115945} was
+914818ms Left 2 Solved prob-298 {:score 7142, :time 92095} was
+924044ms Left 1 Solved prob-299 {:score 10521, :time 88489} was
+937078ms Left 0 Solved prob-300 {:score 8879, :time 108142} was
+DONE in 937078  ms
+
+After spending some time exploring (really learning the code base), 
+benchmarking, and applying incremental operational improvements,
+as of 16 July 2019, the version in the opt branch, running the
+same function gives us:
+
+122253ms Left 8 Solved prob-296 {:score 3176, :time 4532} was [elided]
+126843ms Left 7 Solved prob-289 {:score 10749, :time 24839} was [elided]
+127707ms Left 6 Solved prob-297 {:score 4489, :time 7950} was [elided]
+131515ms Left 5 Solved prob-293 {:score 9104, :time 17035} was [elided]
+132974ms Left 4 Solved prob-294 {:score 10652, :time 16969} was [elided]
+135846ms Left 3 Solved prob-295 {:score 7906, :time 15004} was [elided]
+135977ms Left 2 Solved prob-298 {:score 7143, :time 13092} was [elided]
+138091ms Left 1 Solved prob-300 {:score 7771, :time 12484} was [elided]
+139900ms Left 0 Solved prob-299 {:score 10944, :time 12734} was [elided]
+DONE in 139900  ms
+
+Or about a 6.7 fold improvement (assuming everything is still
+computing correctly, and timing is accurate).
+
+I think there are more tweaks and hacks to be applied.  Notably,
+I did nothing to change the implementation of any search algorithms,
+only to speed up existing functions, optimize data access patterns,
+and leverage features like inlining and macros to help keep things
+both expressive and performance.  I extended the mutable structures
+used in the original implementation, but retained persistent structures
+as well (e.g. I didn't inject mutability beyond the original semantics).
+
+This has been an interested experiment, and looks like it will
+continue tobe going forward.  There more tweaks to try (hopefully
+while maintaining expressivess).  I don't know if we'll overtake Rust or
+a systems level language, but I'd like to see how close we can get
+relative to effort spent / distortion of Clojure (e.g. writing mutable
+array-based Java in Clojure).
+
+* Main Impediments
+
+** hash comparison for Points is inefficient
+The default hash function is suboptimal for the data.  Rust does not
+pay this penalty, we should aim to avoid it.
+
+** Points used everywhere incur hash debt
+Authors leverage Point records all over, including insertion and 
+lookup from associative containers.  Faster hashing means
+faster reads, etc.  For hot paths, this is pretty effective
+(initially just improving Points took the problem runtime
+from 100s to ~20s on my machine for the "big" problem instance
+used for testing, prob-277.).
+
+** Precomputed lookup table is inefficient
+Again, this leverages Points for everything.  There are
+also commonalities in the data (e.g. all x coordinates
+are 1) that allow for more efficient lookup schemes
+at little cost in expressivity.  Big payoff in practice.
+
+** State is maintained in a PersistentHashMap
+Given the amount of times fields are accessed, the cost is
+unacceptable.  Far better to optimize for reads and use records or
+types.  I opted to use defrecords for level state and leverage field
+access as much as possible.  This gets us closer (but not exactly)
+to Rust's implementation that uses Structs, again without
+losing expressiveness.
+
+** nth and get via destructuring, on hot paths
+Initially unrolled hot spots (via presence of time spent in
+clojure.lang.RT.nth and clojure.lang.RT.get for vector/seq and map
+destructuring respectively.
+
+After unrolling and getting performance stable, I decided to revisit
+the original intent the authors' had for leveraging Clojure's
+expressivenes, while balancing optional performance optimizations.
+icfpc.core.speed/with-slots is a macro that acts similar to a let
+binding, but specializes in type-hinted destructuring (to include
+fields for records, deftypes, and arbitrary classes).
+
+This provided a way to tune performance without deviating too far from
+Clojure idioms, and provides warnings when the caller is entering a
+slow path (e.g. causing a function call to get or nth).  It's
+basically a poor man's optimizing compiler for the use-case of
+unpacking type-hinted structures for efficient reads.
+ 
+** Dynamic var lookups incur deref costs, significant on hot paths..
+This one was rough, since the original design leverages dynamic
+vars everywhere stylistically.  I either disabled them and folded
+their contribution into the level state (along with quick access) since
+the level is pushed around just about everywhere, or I cached the
+result of the currently bound value 1x before doing any signifcant
+work (e.g. in icfpc.bot.explore*).  This is just basic stuff where
+you stop doing repeated work, e.g. move it outside of your iterating
+code and hot paths.
+
+** Search Fringe for explore improved efficiency
+Surprisingly enough, it's pretty tough to beat the java.util.HashSet 
+implemented search fringe.  I tried a couple of different backends,
+including bifurcan's LinearSet, IntMap, etc.  I eventually
+settled on (based on the size of the maps, estimated at 400 x 400 from
+the data), using a dense representation behing an IFringe protocol.
+This protocol wraps the search fringe, providing access (e.g.
+our precious direct method invocation).  The backing store operates
+as before (caching Points' [x y] coordinates to determine containment),
+but it leverages a dense 2d boolean array and avoids hashing entirely.
+This proved to be a significant performance boost, since checking
+containment and pushing items on the fringe happens A LOT.
+
+** 1D array access projecting from 2 coords arithmetically appears slower then 2d array
+Wrapped the byte arrays (currently) in a facade implememting an
+IByteMap interface.  Better perf, also a simpler API to work with.
+
+** Some function calls occur frequently enough to benefit from inlining
+A little added noise, but definline useful 
+
+** Some numerical ops benefit from explicit operators, e.g. == and unchecked stuff
+Minor benefit but easy.  This wasn't crushing us, but helped on the
+margins.  Datastructure access was far more important...
+
+** Comparative version in Rust appears to not use compare solutions, so we don't
+elided the call to compare solutions, available via [icfpc.main
+solve-elided main-elided].
+
+It "looks" like the Rust implementation is also far lighter in what it's
+doing in some other areas (e.g. Thread checks and other stuff).  Likely
+some more performance gains after doing a comparative review of the code (or 
+better yet, just port the simpler Rust version using newfound tools and principles).
+
+* Pending Efforts
+
+** Load Level
+I spent a decent amount of time exploring optimizations here, and implemented
+many.  This isn't the lion's share of the performance cost though, but it's
+on par with some of the bigger functions inside the bot namespace.  There are
+likely additional optimizations.
+
+** General Transition to Hinted Destructuring via with-slots
+There are several functions I haven't transition to, that still
+leverage the default get and nth implementations for destructuring
+and ignore direct field access of level state.  I'm planning to
+get them folded in and benchmark. 
+
+** Verification of Results
+To date, all of the transforms have been operational, rather than semantic.
+The results "should" match the clojure baseline.  During testing, primarily
+against the "big" problem set prob-277, I kept an eye on maintaining the
+same scores throughout, and did catch one regression but fixed it.
+
+I need to verify every other solution is the same as the original,
+assuming those solutions are both unique and optimal (I have no idea).
+
+* Working Notes...
+
 * dynamic var lookups
  (nth bots *bot*)
 
 * rate function, explore*
-
+  
 * lots of destructuring
-
+  
 
 
 * advance*
@@ -36,7 +214,7 @@ tons of boxed numeric equality...
 **** ifpc.core/get-level
 
 **** ifpc.core/coord->idx
-
+     
 
 *** hashset.contains
 **** ifpc.core.point/equals
@@ -46,7 +224,7 @@ invokes point.size, which invokes clojure.lang.rt/count
 
 
 *** ifpc.bot/step
-
+    
 *** self-time (invocation)
 *** clojure.rt.count
 *** keyword lookup site / get
@@ -57,3 +235,4 @@ invokes point.size, which invokes clojure.lang.rt/count
 *** ifpc.bot/move
 **** ifpc.level/mark-wrapped
 **** ifpc.level/extra-move
+     
