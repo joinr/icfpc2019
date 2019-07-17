@@ -220,6 +220,13 @@ integration with a producer/consumer queue (or a similar method) would
 yield some nice results.  In other words, there may be additional
 techniques that Clojure can explore to exploit available resources.
 
+Some of the existing implementation is a product of experimentation.
+The PooledFringe is - in hindsight - unnecessary if one just packs
+along a search fringe with the level.  This allows workers to 
+use (or re-use) the fringe instead of the current implementation
+that maps threads to their own fringe via a concurrent hash map.
+That introduces some needless overhead.
+
 Another lateral would be going even more primitive in the data
 representation and leveraging byte-buffer backed implementations
 like tech.datatype or other struct-like libraries (Zach Tellman has
@@ -227,6 +234,7 @@ a couple).  These could open some interesting possibilites for
 macros, cache local arrays, etc.  It would be an interesting
 challenge to introduce psuedo value types via Clojure macros 
 without losing expressiveness.
+
 
 * Working Notes...
 ** Unexplained phenomena with unchecked math
