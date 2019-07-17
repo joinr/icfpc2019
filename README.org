@@ -76,6 +76,23 @@ a systems level language, but I'd like to see how close we can get
 relative to effort spent / distortion of Clojure (e.g. writing mutable
 array-based Java in Clojure).
 
+Perhaps the most striking feature is that - despite working with
+unknown legacy code, and having a limited amount of time to hack
+on this in my off hours, there were indeed some reasonable performance
+tweaks, some of which (like the emergent with-slots macro) led
+to serious gains without sacrificing the legacy expressability.
+On the other hand, the original code base was sufficiently
+well written and more-or-less idiomatic Clojure, to the point
+identifying expensive idioms and factoring them into performant
+constructs also proved fairly straightforward (with the help
+of a decent profiler and some pre-existing rules of thumb...).
+
+* Acknowledgement
+
+Thanks to the authors of the original implementation for sharing
+their work and allowing me to learn from it (in particular
+Nikita Prokopov, a.k.a. Tonsky).
+
 * Main Impediments
 
 ** hash comparison for Points is inefficient
