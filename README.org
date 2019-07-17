@@ -1,5 +1,5 @@
 
-#+TITLE: Preeveeyit Clojure
+#+TITLE: Preevyit Clojure
 
 * Synopsis
 
