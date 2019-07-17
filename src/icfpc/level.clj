@@ -89,21 +89,49 @@
     (let [{:keys [x y]} (nth bots (level :bot) )]
       (valid? x y level))))
 
+;; (defn valid?
+;;   ([x y {:keys [width height] :as level}]
+;;     (when (and
+;;             (< -1 x width)
+;;             (< -1 y height)
+;;             (or
+;;               (booster-active? level DRILL)
+;;               (not= OBSTACLE (get-level level x y))))
+;;       level))
+;;   ([{:keys [bots] :as level}]
+;;     (let [{:keys [x y]} (nth bots *bot*)]
+;;       (valid? x y level))))
+
+
 (defn every-fast? [pred xs]
   (reduce (fn [acc x]
             (if (pred x)
               acc
               (reduced nil))) true xs))
 
-(defn obstacle?  [level x y dx' dy']
+;;===========
+;;WIERD
+;;=========
+;;If we use any unchecked math for either obstacle?
+;;or valid-hand?, which calls obstacle?, we end up
+;;diverging in the answer arrived at in the baseline.
+;;I have NO IDEA what's driving that, but
+;;perf hit is minor...
+
+#_(defn obstacle?  [level x y dx' dy']
   (not (identical? OBSTACLE (get-level level (unchecked-add x dx') (unchecked-add y dy')))))
+
+(defn obstacle?  [level x y dx' dy']
+  (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
 
 ;;perf: this is a hot spot
 ;;perf: dstructuring of map args costs "some"
 (defn valid-hand? [x y dx dy  level]
   (with-slots
     [{:fields [width height]} ^lev level
-     x' (unchecked-add x dx) y' (unchecked-add y dy)] ;;perf: hinted numeric ops could help here...
+     ;;using unchecked math here will actually cause out answer to diverge!
+     ;;unknown why the math is sensitive...
+     x' (+ x dx) y' (+ y dy)] ;;perf: hinted numeric ops could help here...
     (when (and
            (<* -1 x' width)  ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
            (<* -1 y' height) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.

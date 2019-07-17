@@ -36,19 +36,22 @@ as of 16 July 2019, the version in the `opt` branch, running the
 same function gives us:
 
 #+BEGIN_EXAMPLE
-122253ms Left 8 Solved prob-296 {:score 3176, :time 4532} was [elided]
-126843ms Left 7 Solved prob-289 {:score 10749, :time 24839} was [elided]
-127707ms Left 6 Solved prob-297 {:score 4489, :time 7950} was [elided]
-131515ms Left 5 Solved prob-293 {:score 9104, :time 17035} was [elided]
-132974ms Left 4 Solved prob-294 {:score 10652, :time 16969} was [elided]
-135846ms Left 3 Solved prob-295 {:score 7906, :time 15004} was [elided]
-135977ms Left 2 Solved prob-298 {:score 7143, :time 13092} was [elided]
-138091ms Left 1 Solved prob-300 {:score 7771, :time 12484} was [elided]
-139900ms Left 0 Solved prob-299 {:score 10944, :time 12734} was [elided]
-DONE in 139900  ms
+122545ms Left 11 Solved prob-286 {:score 7932, :time 22632} was [elided]
+122861ms Left 10 Solved prob-292 {:score 8941, :time 12297} was [elided]
+126084ms Left 9 Solved prob-289 {:score 10288, :time 17094} was [elided]
+127257ms Left 8 Solved prob-296 {:score 3348, :time 4550} was [elided]
+128402ms Left 7 Solved prob-291 {:score 8883, :time 17723} was [elided]
+131036ms Left 6 Solved prob-297 {:score 4490, :time 6515} was [elided]
+133705ms Left 5 Solved prob-293 {:score 9953, :time 17547} was [elided]
+135780ms Left 4 Solved prob-294 {:score 9694, :time 12912} was [elided]
+138774ms Left 3 Solved prob-298 {:score 7142, :time 11703} was [elided]
+138783ms Left 2 Solved prob-295 {:score 7670, :time 12900} was [elided]
+141929ms Left 1 Solved prob-299 {:score 10521, :time 10574} was [elided]
+142385ms Left 0 Solved prob-300 {:score 8879, :time 11999} was [elided]
+DONE in 142385  ms
 #+END_EXAMPLE
 
-Or about a 6.7 fold improvement (assuming everything is still
+Or about a 6.58 fold improvement (assuming everything is still
 computing correctly, and timing is accurate).
 
 I think there are more tweaks and hacks to be applied.  Notably,
