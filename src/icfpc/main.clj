@@ -78,7 +78,7 @@
              (str (- (System/currentTimeMillis) t0) "ms"))
            (when (some? left)
              (str "Left " left))
-           "Solved" name (dissoc sln :path) "was" #_(str/join " / " (compare-solutions name (:score sln))))
+           "Solved" name (dissoc sln :path) "was [elided]" #_(str/join " / " (compare-solutions name (:score sln))))
       (:score sln))
     (catch Exception e
       (if (:throw? opts true)
