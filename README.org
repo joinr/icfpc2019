@@ -1,10 +1,13 @@
 
-* Preeveeyit Clojure
+#+TITLE: Preeveeyit Clojure
 
-This is an ad-hoc examination of some extant clojure code
-as mentioned at 
+* Synopsis
+
+This is an ad-hoc examination of some extant clojure code as mentioned
+at
 https://www.reddit.com/r/Clojure/comments/cb02xs/datascriptrum_author_goodbye_clojure_same_loc_17x/
-and https://www.reddit.com/r/Clojure/comments/cb02xs/datascriptrum_author_goodbye_clojure_same_loc_17x/etf6nep/
+and
+https://www.reddit.com/r/Clojure/comments/cb02xs/datascriptrum_author_goodbye_clojure_same_loc_17x/etf6nep/
 with the original repository at https://github.com/tonsky/icfpc2019
 with a rust version at https://github.com/tonsky/icfpc2019-rust .
 
@@ -19,15 +22,16 @@ I got the following results running icpfc.main/main-elided in the
 (slightly modified) baseline branch:
 
 #+BEGIN_EXAMPLE
-841604ms Left 7 Solved prob-291 {:score 8883, :time 165823} was
-861677ms Left 6 Solved prob-297 {:score 4490, :time 51607} was
-865518ms Left 5 Solved prob-293 {:score 9953, :time 161972} was
-873999ms Left 4 Solved prob-294 {:score 9694, :time 123668} was
-905765ms Left 3 Solved prob-295 {:score 7670, :time 115945} was
-914818ms Left 2 Solved prob-298 {:score 7142, :time 92095} was
-924044ms Left 1 Solved prob-299 {:score 10521, :time 88489} was
-937078ms Left 0 Solved prob-300 {:score 8879, :time 108142} was
-DONE in 937078  ms
+859915ms Left 8 Solved prob-286 {:score 7932, :time 237700} was [elided]
+884298ms Left 7 Solved prob-291 {:score 8883, :time 164158} was [elided]
+907557ms Left 6 Solved prob-297 {:score 4490, :time 51442} was [elided]
+912395ms Left 5 Solved prob-293 {:score 9953, :time 159562} was [elided]
+918182ms Left 4 Solved prob-294 {:score 9694, :time 123444} was [elided]
+950599ms Left 3 Solved prob-295 {:score 7670, :time 118231} was [elided]
+960923ms Left 2 Solved prob-298 {:score 7142, :time 92654} was [elided]
+970510ms Left 1 Solved prob-299 {:score 10521, :time 88154} was [elided]
+983865ms Left 0 Solved prob-300 {:score 8879, :time 109354} was [elided]
+DONE in 983866  ms
 #+END_EXAMPLE
 
 After spending some time exploring (really learning the code base), 
@@ -51,8 +55,11 @@ same function gives us:
 DONE in 142385  ms
 #+END_EXAMPLE
 
-Or about a 6.58 fold improvement (assuming everything is still
-computing correctly, and timing is accurate).
+Or about a 6.91 fold improvement (assuming everything is still
+computing correctly, and timing is accurate), or down from ~16m 22s
+wall-clock to 2m 21s.  Comparisons of the baseline scores (in baseline
+branch, scores.edn) and the resulting scores (in opt branch,
+scores.edn) show problems have identical scores.
 
 I think there are more tweaks and hacks to be applied.  Notably,
 I did nothing to change the implementation of any search algorithms,
@@ -182,19 +189,31 @@ I need to verify every other solution is the same as the original,
 assuming those solutions are both unique and optimal (I have no idea).
 
 * Working Notes...
+** Unexplained phenomena with unchecked math
+I added some unchecked math ops early on prior to more thorough
+profiling and exploration, which affected 2 functions in particular:
+icfpc.level/valid-hand?  and icfpc.level/obstacle? .  
 
-* dynamic var lookups
+There was originally just one function (valid-hand?)  which I split
+out into two during code spelunking (may reverse that decision in the
+future).  It turns out that using unchecked math there for the
+arithmetic actually introduced a regression, where the baseline
+results did not match the opt branch.  I missed this regression (as it
+happened before I locked things down for testing), but managed to find
+and fix it prior to publishing this repo.  
+
+So...word of wisdom: make sure your operations really can use
+unchecked math :) I have no idea why in this case they don't (since
+they're ostensibly integers...).
+
+** dynamic var lookups
  (nth bots *bot*)
-
-* rate function, explore*
-  
-* lots of destructuring
-  
-
-
-* advance*
-** ifpc.bot/explore*
-*** rate
+ 
+** rate function, explore*
+** lots of destructuring
+** advance*
+*** ifpc.bot/explore*
+**** rate
 **** valid-hand?
 The every? predicate for valid-hand invokes
 ifpc.core/get-level 
@@ -223,22 +242,22 @@ tons of boxed numeric equality...
 **** ifpc.core/coord->idx
      
 
-*** hashset.contains
+**** hashset.contains
 **** ifpc.core.point/equals
 uses map equality
 invokes seq implementation
 invokes point.size, which invokes clojure.lang.rt/count
 
 
-*** ifpc.bot/step
+**** ifpc.bot/step
     
-*** self-time (invocation)
-*** clojure.rt.count
-*** keyword lookup site / get
-*** hashset.add
+**** self-time (invocation)
+**** clojure.rt.count
+**** keyword lookup site / get
+**** hashset.add
 
 
-** ifpc.bot/act
+*** ifpc.bot/act
 *** ifpc.bot/move
 **** ifpc.level/mark-wrapped
 **** ifpc.level/extra-move
