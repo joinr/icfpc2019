@@ -18,6 +18,7 @@ options (e.g. default 4GB max heap, default GC, main uses 8 threads),
 I got the following results running icpfc.main/main-elided in the
 (slightly modified) baseline branch:
 
+#+BEGIN_QUOTE
 841604ms Left 7 Solved prob-291 {:score 8883, :time 165823} was
 861677ms Left 6 Solved prob-297 {:score 4490, :time 51607} was
 865518ms Left 5 Solved prob-293 {:score 9953, :time 161972} was
@@ -27,12 +28,14 @@ I got the following results running icpfc.main/main-elided in the
 924044ms Left 1 Solved prob-299 {:score 10521, :time 88489} was
 937078ms Left 0 Solved prob-300 {:score 8879, :time 108142} was
 DONE in 937078  ms
+#+END_QUOTE
 
 After spending some time exploring (really learning the code base), 
 benchmarking, and applying incremental operational improvements,
 as of 16 July 2019, the version in the opt branch, running the
 same function gives us:
 
+#+BEGIN_QUOTE
 122253ms Left 8 Solved prob-296 {:score 3176, :time 4532} was [elided]
 126843ms Left 7 Solved prob-289 {:score 10749, :time 24839} was [elided]
 127707ms Left 6 Solved prob-297 {:score 4489, :time 7950} was [elided]
@@ -43,6 +46,7 @@ same function gives us:
 138091ms Left 1 Solved prob-300 {:score 7771, :time 12484} was [elided]
 139900ms Left 0 Solved prob-299 {:score 10944, :time 12734} was [elided]
 DONE in 139900  ms
+#+END_QUOTE
 
 Or about a 6.7 fold improvement (assuming everything is still
 computing correctly, and timing is accurate).
