@@ -185,8 +185,23 @@ The results "should" match the clojure baseline.  During testing, primarily
 against the "big" problem set prob-277, I kept an eye on maintaining the
 same scores throughout, and did catch one regression but fixed it.
 
-I need to verify every other solution is the same as the original,
-assuming those solutions are both unique and optimal (I have no idea).
+Results currently check out when comparing the baseline scores.edn 
+and the opt branch's scores.edn (each from respective run output.
+
+I am confident the opt implementation is functionally equivalent to
+the original baseline implementation.
+
+** Additional performance
+Aside from the basic mechanical changes (e.g. efficient reads), I
+didn't alter anything algorithmically, since I didn't spend any time
+reading about the original problem or comparing the implementation's
+approach.  Consequently, there are likely additional areas to tweak,
+introduce local mutation, or even leverage parallelism.  Currently the
+distribution of work is effectively coarse-grained, on a per-problem
+basis.  I suspect dissecting the work into finer-grained units for
+integration with a producer/consumer queue (or a similar method) would
+yield some nice results.  In other words, there may be additional
+techniques that Clojure can explore to exploit available resources.
 
 * Working Notes...
 ** Unexplained phenomena with unchecked math
