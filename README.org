@@ -65,7 +65,7 @@ I think there are more tweaks and hacks to be applied.  Notably,
 I did nothing to change the implementation of any search algorithms,
 only to speed up existing functions, optimize data access patterns,
 and leverage features like inlining and macros to help keep things
-both expressive and performance.  I extended the mutable structures
+both expressive and performant.  I extended the mutable structures
 used in the original implementation, but retained persistent structures
 as well (e.g. I didn't inject mutability beyond the original semantics).
 
