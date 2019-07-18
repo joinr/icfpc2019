@@ -209,6 +209,11 @@
 (def ^:const EMPTY (byte 0))
 (def ^:const OBSTACLE (byte 1))
 (def ^:const WRAPPED (byte 2))
+
+;;Instructions that determine
+;;our bot's movement and actions I think.
+;;We have 18 discrete states.
+;;Path lengths can be arbitrarly large.
 (def ^:const EXTRA_HAND \B)
 (def ^:const FAST_WHEELS \F)
 (def ^:const DRILL \L)
@@ -222,6 +227,7 @@
 (def ^:const DOWN  \S)
 (def ^:const LEFT  \A)
 (def ^:const RIGHT \D)
+
 (def ^:const ROTATE_CW  \E)
 (def ^:const ROTATE_CCW \Q)
 (def ^:const SET_BEAKON \R)

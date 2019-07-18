@@ -237,6 +237,16 @@ A little added noise, but definline useful
 Minor benefit but easy.  This wasn't crushing us, but helped on the
 margins.  Datastructure access was far more important...
 
+** Avoid RestFn invocation due to varargs arities
+Numeric comparisons like <, when invoked with arities above 2, resort to 
+a varargs implementation.  The idiom (< -1 x y) showed up in many places
+on the hot path.  Every time you do this, you incur a small penalty,
+as the destructured args reprsented by the xs as in (fn [x y & xs] ) 
+are coerced into a seq and require some additional allocation and
+function calls.  If you're on a hot path, and doing this in multiple
+places, it adds up.  A quick fix, particularly for inlined calls (common
+in this setting), is to just define a macro or equivalent inline function
+that eliminates the need for varargs.
 ** Comparative version in Rust appears to not use compare solutions, so we don't
 elided the call to compare solutions, available via [icfpc.main
 solve-elided main-elided].
