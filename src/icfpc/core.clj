@@ -17,6 +17,32 @@
         (= c1 :when-some)    `(if-some ~c2 ~(first cs) (cond+ ~@(next cs)))
         :else                `(if ~c1 ~c2 (cond+ ~@cs))))))
 
+(defmacro defrecord+
+  "Like defrecord, but adds default map-like function application
+   semantics to the record.  Fields are checked first in O(1) time,
+   then general map lookup is performed."
+  [name keys & impls]
+  (let [fields (map keyword keys)
+        binds  (reduce (fn [acc [l r]]
+                     (conj acc l r))
+                   []
+                   (map vector fields (map #(with-meta % {})  keys)))
+        
+        [_ name keys & impls] &form        
+        this (gensym "this")
+        k    (gensym "k")]
+    `(~'defrecord ~name ~keys ~@impls
+      ~'clojure.lang.IFn
+      (~'invoke [~this ~k]
+       (case ~k
+         ~@binds
+         (.valAt ~this ~k)))
+      (~'invoke [~this ~k default#]
+       (case ~k
+         ~@binds
+         (.valAt ~this ~k default#))))))
+         
+
 (defmacro <*
   "Evaluates exprs one at a time, from left to right, ensuring
    < property holds"
@@ -132,6 +158,50 @@
     `(let [~b ~bm]
        (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
 
+
+(defrecord+ robot [^long x
+                   ^long y
+                   ^clojure.lang.ISeq  layout
+                   ^clojure.lang.IFn picked-booster
+                   ^clojure.lang.IPersistentMap active-boosters
+                   ^String path 
+                   ^clojure.lang.IFn plan
+                   ^clojure.lang.IFn current-zone
+                   ])
+
+#_(defn new-bot [x y]
+  (map->robot 
+   {:x               (long x)
+    :y               (long y)
+    
+    :layout          [[0 0] [1 0] [1 1] [1 -1]]
+    :active-boosters {}
+    :picked-booster  nil
+    :path            ""
+    :current-zone    nil}))
+
+#_(defrecord+ lev
+    [name
+     ^int  width
+     ^int  height
+     ^IByteMap grid
+     ^IByteMap zones-grid
+     zones-area
+     ^shorts weights
+     bots
+     empty
+     collected-boosters
+     spawns
+     boosters
+     beakons
+     bot
+     zones?]
+  ILevel
+  (lev-width   [this] width)
+  (lev-height  [this] height)
+  (lev-grid    [this] grid)
+  (lev-weights [this] weights)
+  (lev-zones   [this] zones-grid))
 
 (defrecord lev
     [name
