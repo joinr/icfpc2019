@@ -4,7 +4,8 @@
    [clojure.string :as str]
    [icfpc.core :refer :all]
    [icfpc.parser :as parser]
-   [icfpc.speed :refer [with-slots]])
+   [icfpc.speed :refer [with-slots]]
+   [icfpc.fringe :as fringe])
   (:import
    [java.util Arrays]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
@@ -23,12 +24,20 @@
 
 (defmacro update-bot [level key f & args]
   `(update ~level :bots
-     (fn [arg#]
-       (update arg# (~level :bot)
-         (fn [inner#]
-           (update inner# ~key (fn [final#]
-                                 (~f final# ~@args))))))))
-               
+           (fn [arg#]
+             (update arg# (~level :bot)
+                     (fn [inner#]
+                       (update inner# ~key (fn [final#]
+                                             (~f final# ~@args))))))))
+
+
+(defmacro map-bot [level f & args]
+  `(update ~level :bots
+           (fn [arg#]
+             (update arg# (~level :bot)
+                     (fn [inner#]
+                       (~f inner# ~@args))))))
+
 ;;perf: using point records as keys to vector for coords.
 ;;called by valid-hand? frequently
 ;;point ctr fn could be inlined or macrofied...
@@ -388,15 +397,6 @@
         level (update level :bots #(mapv update-bot %))]
     level))
 
-(defn new-bot [x y]
-  {:x               x 
-   :y               y
-   :layout          [[0 0] [1 0] [1 1] [1 -1]]
-   :active-boosters {}
-   :picked-booster  nil
-   :path            ""
-   :current-zone    nil})
-
 (defn maybe-add-bonuses [level name]
   (let [[_ name] (re-matches #"(.*)\.desc" name)
         buy (io/file (str "problems/" name ".buy"))]
@@ -431,8 +431,10 @@
         clones-count (+ 
                        (count (filter #(= CLONE (val %)) (level :boosters )))
                        ((level :collected-boosters ) CLONE 0)
-                       1)]
+                       1)
+        fringe  (fringe/->bit-fringe width height)]
     (-> (generate-zones level clones-count)
+        (assoc :fringe fringe)
         map->lev)))
 
 (comment

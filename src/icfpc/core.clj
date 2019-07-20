@@ -124,6 +124,11 @@
   (lev-weights [level])
   (lev-zones   [level]))
 
+(defprotocol IFringe
+  (has-fringe? [this o])
+  (add-fringe  [this o])
+  (clear-fringe! [this]))
+
 (definterface IByteMap
   (getByte ^byte   [ ^int i ^int j])
   (setByte ^byte   [ ^int i ^int j ^byte v])
@@ -158,29 +163,16 @@
     `(let [~b ~bm]
        (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
 
+(defn new-bot [x y]
+  {:x               x 
+   :y               y
+   :layout          [[0 0] [1 0] [1 1] [1 -1]]
+   :active-boosters {}
+   :picked-booster  nil
+   :path            ""
+   :current-zone    nil})
 
-(defrecord+ robot [^long x
-                   ^long y
-                   ^clojure.lang.ISeq  layout
-                   ^clojure.lang.IFn picked-booster
-                   ^clojure.lang.IPersistentMap active-boosters
-                   ^String path 
-                   ^clojure.lang.IFn plan
-                   ^clojure.lang.IFn current-zone
-                   ])
-
-#_(defn new-bot [x y]
-  (map->robot 
-   {:x               (long x)
-    :y               (long y)
-    
-    :layout          [[0 0] [1 0] [1 1] [1 -1]]
-    :active-boosters {}
-    :picked-booster  nil
-    :path            ""
-    :current-zone    nil}))
-
-#_(defrecord+ lev
+(defrecord+ lev
     [name
      ^int  width
      ^int  height
@@ -195,71 +187,18 @@
      boosters
      beakons
      bot
-     zones?]
-  ILevel
-  (lev-width   [this] width)
-  (lev-height  [this] height)
-  (lev-grid    [this] grid)
-  (lev-weights [this] weights)
-  (lev-zones   [this] zones-grid))
-
-(defrecord lev
-    [name
-     ^int  width
-     ^int  height
-     ^IByteMap grid
-     ^IByteMap zones-grid
-     zones-area
-     ^shorts weights
-     bots
-     empty
-     collected-boosters
-     spawns
-     boosters
-     beakons
-     bot
-     zones?]
+     zones?
+     ^icfpc.core.IFringe fringe]
   ILevel
   (lev-width   [this] width)
   (lev-height  [this] height)
   (lev-grid    [this] grid)
   (lev-weights [this] weights)
   (lev-zones   [this] zones-grid)
-  clojure.lang.IFn
-  (invoke [this k] (case k
-                     :name name
-                     :width width
-                     :grid grid
-                     :zones-grid zones-grid
-                     :zones-area zones-area
-                     :weights weights
-                     :bots bots
-                     :empty empty
-                     :collected-boosters collected-boosters
-                     :spawns spawns
-                     :boosters boosters
-                     :beakons beakons
-                     :bot bot
-                     :zones? zones?
-                     (.valAt this k)))
-  (invoke [this k default]
-    (case k
-      :name name
-      :width width
-      :grid grid
-      :zones-grid zones-grid
-      :zones-area zones-area
-      :weights weights
-      :bots bots
-      :empty empty
-      :collected-boosters collected-boosters
-      :spawns spawns
-      :boosters boosters
-      :beakons beakons
-      :bot bot
-      :zones? zones?
-      (.valAt this k default))))
-
+  IFringe
+  (has-fringe? [this o] (.has-fringe? fringe o))
+  (add-fringe  [this o] (do (.add-fringe fringe o) this))
+  (clear-fringe! [this] (do (.clear-fringe! fringe) this)))
 
 (extend-protocol
     ILevel

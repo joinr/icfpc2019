@@ -121,6 +121,10 @@ access as much as possible.  This gets us closer (but not exactly)
 to Rust's implementation that uses Structs, again without
 losing expressiveness.
 
+Note: this may not hold in practice for ArrayMaps, since the 
+same performance windfall for the level representation
+did not seem to carry over for instance to the robot (for now).
+
 ** nth and get via destructuring, on hot paths
 Initially unrolled hot spots (via presence of time spent in
 clojure.lang.RT.nth and clojure.lang.RT.get for vector/seq and map
@@ -256,6 +260,10 @@ doing in some other areas (e.g. Thread checks and other stuff).  Likely
 some more performance gains after doing a comparative review of the code (or 
 better yet, just port the simpler Rust version using newfound tools and principles).
 
+** Recomputing jump points inside loop, jump points are sparse too.
+Moved this out of the loop, into a delayed value that is only computed
+once and re-used.
+
 * Pending Efforts
 
 ** Load Level
@@ -309,8 +317,31 @@ macros, cache local arrays, etc.  It would be an interesting
 challenge to introduce psuedo value types via Clojure macros 
 without losing expressiveness.
 
-
 * Working Notes...
+** Interesting Perf Difference Between ArrayMaps and Records
+Original idea of just "structing" the bot representation
+into a record and getting the same benefits from
+field access turned out to be counterintuitive in practice.
+
+
+Strangely, arraymaps "appear" to maintain a slight
+edge, since bot only has like 6 keys.  This doesn't
+make a ton of sense, in that field lookups should
+dominate, even for arraymaps.  It looks like if the
+keys are in the front, you get some linear
+fast access for the arraymap akin to a field lookup.
+Strange, still on nanosecond scale...
+
+** Interesting perf difference with clojure.core/update
+Did some exploratory macro inlining, along with
+leveraging field access on bots, etc. For some
+reason, current metrics indicate  that the 
+stock clojure.core/update function is just fine,
+if not slightly dominant during a whole-program
+run.  Microbenchmarks indicate going the macro
+route is dominant, but in practice (perhaps
+due to inlining...) this isn't so.
+
 ** Unexplained phenomena with unchecked math
 I added some unchecked math ops early on prior to more thorough
 profiling and exploration, which affected 2 functions in particular:

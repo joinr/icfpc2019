@@ -10,8 +10,8 @@
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
-   [icfpc.core lev Point]
-   [icfpc.fringe IFringe]))
+   [icfpc.core lev Point #_robot]
+   [icfpc.core.IFringe]))
 
 (def ^:dynamic *disabled* #{})
 (def ^:dynamic *explore-depth* 5)
@@ -118,6 +118,18 @@
         level))
     level))
 
+#_(defn move [level dx dy action]
+  (some-> level
+    (map-bot  (fn [bot]
+                (with-slots [{:keys [x y path]} ^IPersistentMap bot]
+                  (assoc bot :x (+ x dx)
+                             :y (+ y dy)
+                             :path (str path action)))))
+    (valid?)
+    (mark-wrapped)
+    (extra-move dx dy)
+   ))
+
 (defn move [level dx dy action]
   (some-> level
     (update-bot :x + dx)
@@ -183,8 +195,11 @@
   (with-slots [[x y] ^Indexed xy
                {:fields [boosters weights width height ^Indexed bots bot zones?]}
                   ^lev level
-               {:keys   [layout current-zone]} ^IPersistentMap (.nth bots bot)]
+               ;{:fields   [layout current-zone]} ^robot
+               {:keys   [layout current-zone]} ^IPersistentMap
+               (.nth bots bot)]
     (cond
+      ;;THis is a persistentmap invocation.  We're hashing the vector [x y]...
       (boosters [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
       :else
@@ -209,16 +224,95 @@
 ;;drilled is a persistent hashset.
 ;;we can probably improve drilled performance.
 
+;;interesting note: as with other research, array maps are competitive with records even with
+;;field lookups.  This is definately not the case for non-array maps.  Curious.
+;;In this case, field access win out marginally.
 (defrecord botmove [^IPersistentVector path ^Point pos ^int fast ^int drill ^IPersistentSet drilled])
 
+(definline init-fringe [fringe x y]
+  (let [fringe (with-meta fringe {:tag 'icfpc.core.IFringe})
+        cleared    (with-meta `(.clear-fringe! ~fringe) {:tag 'icfpc.core.IFringe})]
+    `(.add-fringe 
+       ~cleared
+       (->Point ~x ~y))))
+
 (defn explore* [level rate-fn]
-  (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons]} ^lev level 
+  (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons fringe]} ^lev level 
                {:keys [x y ^IPersistentMap active-boosters]} ^IPersistentMap (.nth bots bot)
                ;;we're hashing a lot here....paths is just a set of [x y] coordinates.
-               ^IFringe paths (-> (fringe/->pooled-fringe width height)
-                                  (fringe/add-fringe (->Point x y)))
+               ^icfpc.core.IFringe paths (init-fringe fringe x y)
                ^java.util.ArrayDeque queue (doto (ArrayDeque.)
-                       (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
+                                             (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
+               explore-depth *explore-depth*
+               ;;maybe some more opt here...
+               ;;could be optimized too...
+               jumps    (when beakons
+                          (delay (let [b0   (.nth beakons  0  nil)
+                                       b1   (.nth beakons  1  nil)
+                                       b2   (.nth beakons  2  nil)]
+                                   (into []  (filter identity)
+                                         [(when b0 [:jump0 b0])
+                                          (when b1 [:jump1 b1])
+                                          (when b2 [:jump2 b2])]))))
+               beakons? (and jumps (pos? (.count ^Indexed @jumps)))]
+                                       
+    (loop [max-len   explore-depth
+           best-path nil
+           best-pos  nil
+           best-rate 0.0]
+      (if-some [move (.poll queue)]
+        (with-slots [{:fields [^Counted path ^Indexed pos fast drill drilled]} ^botmove move                                  
+                     [x y]         pos         
+                     path-length   (.count path)]
+          (if (< path-length max-len)
+            (do 
+              ;; still exploring inside max-len
+              ;; moves
+              (doseq [mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
+                (with-slots [[move dx dy] ^Indexed mv 
+                             ;;this is a Point
+                             pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
+                  (when (and (some? pos')
+                             ;;haven't visited [x y] yet.
+                             (not (.has-fringe? paths pos')))
+                    (let [path'    (conj path move) ;;slow conj to vector.
+                          drilled' (cond-> drilled (pos? drill) (conj pos'))]
+                      (.add-fringe  paths pos')
+                      (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
+              ;; jumps
+              (when beakons?
+                (doseq [^Indexed mv (.deref ^clojure.lang.IDeref jumps)]
+                  (let [pos' (.nth  mv 1)]
+                    (when   ;;haven't visited [x y] yet.
+                        (not (.has-fringe? paths pos'))
+                      (let [move  (.nth mv 0)
+                            path' (conj path move)]
+                        (.add-fringe paths pos')
+                        (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled)))))))
+              (cond+
+               (zero? path-length) (recur max-len best-path best-pos best-rate)
+               :let [rate (/ (rate-fn pos level) (double  path-length))]
+               (zero? rate)       (recur max-len best-path best-pos best-rate)
+               (zero? best-rate)  (recur max-len path pos rate)
+               (> rate best-rate) (recur max-len path pos rate)
+               (< rate best-rate) (recur max-len best-path best-pos best-rate)
+               (< path-length     (.count ^Counted  best-path)) (recur max-len path pos rate)
+               :else (recur max-len best-path best-pos best-rate)))
+            ;; only paths with len > max-len left, maybe already have good solution?
+            (if (nil? best-path)
+              (do
+                (.addFirst queue move)
+                (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
+              [best-path best-pos])))        
+        [best-path best-pos]))))
+
+#_(defn explore* [level rate-fn]
+  (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons fringe]} ^lev level 
+               {:keys [x y ^IPersistentMap active-boosters]} ^IPersistentMap (.nth bots bot)
+               ;;we're hashing a lot here....paths is just a set of [x y] coordinates.
+               ^icfpc.core.IFringe paths (-> fringe  clear-fringe! (add-fringe (->Point x y)))
+               ^java.util.ArrayDeque queue (doto (ArrayDeque.)
+                                             (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
                explore-depth *explore-depth*]
     (loop [max-len   explore-depth
            best-path nil
@@ -273,7 +367,8 @@
         [best-path best-pos]))))
 
 (defn explore [level rate-fn]
-  (first (explore* level rate-fn)))
+  #_(first (explore* level rate-fn))
+  (.nth  ^Indexed (explore* level rate-fn) 0))
 
 (defn wait-off-fast [{:keys [bots] :as level}]
   (let [{:keys [active-boosters x y]} (nth bots (level :bot)  )
@@ -354,6 +449,16 @@
     (when (some? delay)
       (Thread/sleep delay))))
 
+#_(defn collect-clone [level]
+  (with-slots [{:fields [boosters collected-boosters bot]} ^lev level]
+    (when (and
+           (= 0 bot )
+           (= 0 (collected-boosters CLONE 0))
+           (some (fn [[_ b]] (= b CLONE)) boosters))
+      (explore level (fn [xy level]
+                       (with-slots [[x y] ^Indexed xy]
+                         (if (= (boosters [x y]) CLONE) 1 0)))))))
+
 (defn collect-clone [{:keys [boosters collected-boosters bot] :as level}]
   (when (and
           (= 0 bot )
@@ -361,6 +466,19 @@
           (some (fn [[_ b]] (= b CLONE)) boosters))
     (explore level (fn [[x y] level]
                      (if (= (boosters [x y]) CLONE) 1 0)))))
+
+#_(defn goto-spawn [level]
+  (with-slots [{:fields [bot ^Indexed bots  spawns collected-boosters]} ^lev level
+               {:keys [x y]} ^IPersistentMap (.nth bots bot)]
+    (when (and
+            (= 0 bot )
+            (pos? (collected-boosters CLONE 0))
+            (not (spawns [x y])))
+      (explore level (fn [[x y] level]
+                         (if (spawns [x y]) 1 0))
+               #_(fn [xy level]
+                 (with-slots [[x y] ^Indexed xy]
+                   (if (spawns [x y]) 1 0)))))))
 
 (defn goto-spawn [{:keys [bot bots spawns collected-boosters] :as level}]
   (let [{:keys [x y]} (nth bots (level :bot))]
@@ -370,6 +488,28 @@
             (not (spawns [x y])))
       (explore level (fn [[x y] level]
                        (if (spawns [x y]) 1 0))))))
+
+#_(defn choose-next-zone [level]
+  (with-slots [{:fields [^Indexed bots bot]} ^lev level
+               {:keys [current-zone]}      ^IPersistentMap (.nth bots bot)]
+    (when (or (nil? current-zone)
+            (= 0 (zone-area level current-zone)))
+      (let [taken        (set (map :current-zone bots))
+            unfinished   (set
+                           (for [[zone area] (level :zones-area )
+                                 :when (pos? area)]
+                              zone))
+            untaken      (set/difference unfinished taken)
+            look-in      (if (empty? untaken) unfinished untaken)
+            [path [x y]] (explore* level
+                           (fn [xy level]
+                             (with-slots [[x y] ^Indexed xy]          
+                               (cond+
+                                (not= EMPTY (get-level level x y)) 0
+                                (look-in (get-zone level x y)) 1
+                                :else 0))))]
+        (-> level
+          (update-bot :current-zone (constantly (get-zone level x y)))))))) ;; TODO set path too
 
 (defn choose-next-zone [{:keys [bots] :as level}]
   (let [{:keys [current-zone]} (nth bots (level :bot)  )]
@@ -441,7 +581,8 @@
 ;;all this delay stuff....probably doesn't show up in the rust version
 (defn solve [level & [{:keys [debug? delay disabled zones? explore-depth] :or {debug? true}}]]
   (let [t0 (System/currentTimeMillis)
-        *last-frame (atom 0)]
+        *last-frame (atom 0)
+        delay? (some? delay)]
     (binding [*disabled*      (or disabled *disabled*)
               *explore-depth* (or explore-depth *explore-depth*)
               ;*zones?*        (if zones? zones? *zones?*)
@@ -450,10 +591,10 @@
         ;;this is costing us some runtime.  combined with the pooled checks
         ;;invoking Thread/currentThread
         ;;The rust implementation doesn't do any of this....
-        (when (.isInterrupted (Thread/currentThread))
-          (throw (InterruptedException.)))
-        (when (or (some? delay)
-                (and debug? (>= (- (System/currentTimeMillis) @*last-frame) 200)))
+        #_(when (.isInterrupted (Thread/currentThread))
+           (throw (InterruptedException.)))
+        (when (or delay?
+                  (and debug? (>= (- (System/currentTimeMillis) @*last-frame) 200)))
           (print-step level delay)
           (reset! *last-frame (System/currentTimeMillis)))
 

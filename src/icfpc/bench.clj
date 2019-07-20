@@ -6,6 +6,7 @@
             [clojure.data.int-map :as i]
             [icfpc [core :as ic :refer [->Point]] [level :as level] [bot :as bot] [bif :as b]]
             [primitive-math :as p]
+            [clj-java-decompiler.core :refer [decompile disassemble]]
             )
   (:import [java.util HashSet HashMap ArrayDeque]))
 
@@ -707,7 +708,8 @@
 ;;Possibly faster eq...
 ;;One big bottleneck is checking existence of points.
 
-(def ps (->> (slurp "points.edn")
+
+#_(def ps (->> (slurp "points.edn")
              clojure.edn/read-string
              (map (fn [[{:keys [x y]} _]]
                     (icfpc.core/->Point x y)))
@@ -834,3 +836,10 @@
 ;; 	low-severe	 1 (16.6667 %)
 ;; 	low-mild	 1 (16.6667 %)
 ;;  Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+
+
+;;examining bytecode of expressions...
+;;trying to determine why our field-access code isn't
+;;producing benefits for messing with bots.
+
+
