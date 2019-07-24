@@ -445,6 +445,34 @@
           bonuses))
       level)))
 
+(defn booster-map [w h boosters]
+  (let [bg (->byte-grid w h)
+        _  (fill-bytes (bg) EMPTY)]
+    (doseq [[[x y] b] boosters]
+      (set-byte bg x y b))
+    (reify clojure.lang.IPersistentMap
+      (valAt [this k]
+        (with-slots [[x y] ^Indexed k]
+          (let [v  (get-byte bg x y)]
+            (when-not (== v EMPTY)
+              (char v)))))
+      (valAt [this k nf]
+        (or (.valAt this k) nf))
+      (without [this k]
+        (with-slots [[x y] ^Indexed k]
+          (let [v  (get-byte bg x y)]          
+            (when-not (== v EMPTY)
+              (set-byte bg x y EMPTY))
+            this)))
+      clojure.lang.IFn
+      (invoke [this k] (.valAt this k))
+      ;;2z faster...
+      (invoke [this x y] (let [v  (get-byte bg x y)]
+                           (when-not (== v EMPTY)
+                             (char v)))))))
+  
+        
+
 (defn load-level [name]
   (let [{:keys [bot-point corners obstacles boosters]} (parser/parse-level name)
         [width height] (bounds corners)
@@ -470,7 +498,7 @@
                        1)
         fringe  (fringe/->bit-fringe width height)]
     (-> (generate-zones level clones-count)
-        (assoc :fringe fringe)
+        (assoc :fringe fringe :boosters (booster-map width height (:boosters level)))
         map->lev)))
 
 (comment
