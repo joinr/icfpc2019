@@ -40,24 +40,24 @@ as of 16 July 2019, the version in the `opt` branch, running the
 same function gives us:
 
 #+BEGIN_EXAMPLE
-122545ms Left 11 Solved prob-286 {:score 7932, :time 22632} was [elided]
-122861ms Left 10 Solved prob-292 {:score 8941, :time 12297} was [elided]
-126084ms Left 9 Solved prob-289 {:score 10288, :time 17094} was [elided]
-127257ms Left 8 Solved prob-296 {:score 3348, :time 4550} was [elided]
-128402ms Left 7 Solved prob-291 {:score 8883, :time 17723} was [elided]
-131036ms Left 6 Solved prob-297 {:score 4490, :time 6515} was [elided]
-133705ms Left 5 Solved prob-293 {:score 9953, :time 17547} was [elided]
-135780ms Left 4 Solved prob-294 {:score 9694, :time 12912} was [elided]
-138774ms Left 3 Solved prob-298 {:score 7142, :time 11703} was [elided]
-138783ms Left 2 Solved prob-295 {:score 7670, :time 12900} was [elided]
-141929ms Left 1 Solved prob-299 {:score 10521, :time 10574} was [elided]
-142385ms Left 0 Solved prob-300 {:score 8879, :time 11999} was [elided]
-DONE in 142385  ms
+98805ms Left 11 Solved prob-286 {:score 7932, :time 17262} was [elided]
+99117ms Left 10 Solved prob-292 {:score 8941, :time 9325} was [elided]
+102913ms Left 9 Solved prob-289 {:score 10288, :time 13075} was [elided]
+102976ms Left 8 Solved prob-296 {:score 3348, :time 3515} was [elided]
+104022ms Left 7 Solved prob-291 {:score 8883, :time 13732} was [elided]
+105662ms Left 6 Solved prob-297 {:score 4490, :time 5015} was [elided]
+109255ms Left 5 Solved prob-293 {:score 9953, :time 13185} was [elided]
+109271ms Left 4 Solved prob-294 {:score 9694, :time 9950} was [elided]
+112223ms Left 3 Solved prob-298 {:score 7142, :time 9122} was [elided]
+112786ms Left 2 Solved prob-295 {:score 7670, :time 9216} was [elided]
+114957ms Left 1 Solved prob-300 {:score 8879, :time 9014} was [elided]
+115395ms Left 0 Solved prob-299 {:score 10521, :time 7499} was [elided]
+DONE in 115395  ms
 #+END_EXAMPLE
 
-Or about a 6.91 fold improvement (assuming everything is still
+Or about a +6.91+ `8.52` fold improvement (assuming everything is still
 computing correctly, and timing is accurate), or down from ~16m 22s
-wall-clock to 2m 21s.  Comparisons of the baseline scores (in baseline
+wall-clock to +2m 21s+ 1m 54s.  Comparisons of the baseline scores (in baseline
 branch, scores.edn) and the resulting scores (in opt branch,
 scores.edn) show problems have identical scores.
 
@@ -263,6 +263,35 @@ better yet, just port the simpler Rust version using newfound tools and principl
 ** Recomputing jump points inside loop, jump points are sparse too.
 Moved this out of the loop, into a delayed value that is only computed
 once and re-used.
+
+** Lots of calls to update and variadic assoc
+Updating a nested map requires at least n calls to get/.valAt read the
+map you're trying to update, one function call (possibly variadic)
+to apply to the entry, then another n calls to assoc or .assoc to
+pack the map back together.
+
+The legacy implementation does a lot of single-key updates inside of
+functions on hot paths, when the multiple lookups could be trivially
+flattened into a single lookup, an operation on the map to update
+multiple entries efficiently, and a single assoc.
+We still pay the price for multiple lookups/assoces, but we can
+remove up to n redundant get/assoc pairs and get some big wins
+without losing expressiveness.
+
+*** assoc*
+The initial idea here is to flatten the aforementioned update(s)
+into a single update (icfpc.core/map-bot), and apply a function
+that efficiently does the work therein.  The naive solution is
+a combination of `with-slots` for efficient field/key access,
+and a simple variadic call to `assoc` to update multiple keys
+simultaneously.  This, however, is suboptimal due to
+the variadic call to assoc.  We'd like to preserve the
+nice nature of supply multiple arguments, but invoke
+individual calls to assoc (avoiding variadic fn invocation).
+
+This leads to a simple macro `assoc*` which helps us along.
+On the large map instance, this alone netted about a 6% increase
+for modifying a single function `icfpc.bot/move`.
 
 * Pending Efforts
 
