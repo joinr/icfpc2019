@@ -1,6 +1,6 @@
 (defproject icfpc "2019.0.0"
   :dependencies
-  [[org.clojure/clojure   "1.9.0"]
+  [[org.clojure/clojure   "1.10.1" #_"1.9.0"]
    [org.clojure/data.json "0.2.6"]
 
    [primitive-math "0.1.6" :exclusions [org.clojure/clojure]]

@@ -10,8 +10,7 @@
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
-   [icfpc.core lev Point robot]
-   [icfpc.core.IFringe]))
+   [icfpc.core lev Point robot]))
 
 (def ^:dynamic *disabled* #{})
 (def ^:dynamic *explore-depth* 5)
