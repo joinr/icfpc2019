@@ -318,6 +318,16 @@ challenge to introduce psuedo value types via Clojure macros
 without losing expressiveness.
 
 * Working Notes...
+** BenchMarking Oddities
+I started noticing weird random performance regressions that didn't
+make sense, beyond the typical benchmarking noise.
+
+Looks like something going on at the OS / JVM level for some reason,
+perhaps virus scanning junk, etc. (W10).  If you run into
+odd stuff, it could be something exogenous...
+
+After restarting, I get the same project spinning back up hitting
+records again.  Weird, and no idea what's causing it.
 ** Interesting Perf Difference Between ArrayMaps and Records
 Original idea of just "structing" the bot representation
 into a record and getting the same benefits from
@@ -331,6 +341,52 @@ dominate, even for arraymaps.  It looks like if the
 keys are in the front, you get some linear
 fast access for the arraymap akin to a field lookup.
 Strange, still on nanosecond scale...
+
+**** ArrayMaps
+- This difference stems in how function calls are invoked, and
+  indirectly the implementation of .valAt
+- ArrayMaps, i.e. maps with key cardinality <= 8, 
+  have an object array representing the keys and vals.
+- valAt for arraymaps just strides through each key slot,
+  basically an array lookup, and checks identical? for the
+  input key (object has a similar path, but a bit more expensive).
+- the IFn implementation for arraymaps delegates to .valAt.
+
+****  Records....
+- Records have this notion that they're going to be uber fast
+  for their static or canonical keys, since the keys are actually
+  object fields.
+
+- valAt is implemented as a case dispatch based on the input key
+  to see if it's a static key, which is returned immediately,
+  otherwise .valAt is invoked on the embedded hashmap for
+  non-canonical keys.
+
+- This is pretty efficient in most cases, particualry in comparison
+  to PersistentHashMaps (not ArrayMaps), where simple lookups
+  are waaaay faster, and field lookups are 10x faster.
+
+- HOWEVER, the implementation of 'case doesn't compete with
+  the naive array-based lookup strategy of ArrayMap...
+
+- ArrayMap is just traversing an array of ints (object pointers)
+  and checking for equality (identical?).  This implementation
+  has the nice property that it can be faster for keys earlier
+  in the collection, and in general (up to the 8th key) is 
+  faster than the case-based dispatch (which I assume requires some
+  kind of lower level hashing).
+
+- The net implication is that compared to arraymaps, key lookup
+  is on average SLOWER for records, despite records having
+  access to static fields!
+
+- On top of this, the record implementation has no default IFn
+  implementation, so it's not invokable...
+
+- My goal in designing defrecord+ is to alleviate this, to
+  allow records to be used interchangeably with arraymaps
+  and retain the performance, while allowing use of field accesses
+  as an optimization (via with-slots).
 
 ** Interesting perf difference with clojure.core/update
 Did some exploratory macro inlining, along with

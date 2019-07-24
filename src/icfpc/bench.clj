@@ -843,3 +843,276 @@
 ;;producing benefits for messing with bots.
 
 
+;;bot comparisons...
+;;trying to understand why persistentArrayMap performance is different...
+
+
+;;We already know that the default 'case dispatch based on keyword
+;;identity is approxiamtely 2x slower than the equivalent arraymap
+;;run through its array checking for identical?
+
+;;So, for strict records (aka pseudo structs), we implemented a
+;;function invocation interface that handles this beautifully and
+;;unrolls for n= 8 keys, into a bunch of if identical? calls
+;;to improve funcall lookups.  We did NOT however do that
+;;for our .valAt implementation, which still uses the case/identical?
+;;dispatch mechanism.
+
+;;The goal is to have even generic structs match arraymaps on any map
+;;like lookup, then have then beat maps based on field access.
+
+
+;;same problem with hashing vectors.
+(def boosters
+  {[12 74] \L,
+   [85 303] \L,
+   [27 298] \F,
+   [323 328] \F,
+   [88 163] \B,
+   [133 221] \B,
+   [8 378] \B,
+   [260 146] \F,
+   [51 343] \F,
+   [38 323] \L,
+   [324 323] \B,
+   [97 65] \B,
+   [307 240] \F,
+   [156 293] \L,
+   [167 378] \C,
+   [40 60] \B,
+   [284 358] \F,
+   [14 380] \F,
+   [144 230] \R,
+   [164 212] \R,
+   [303 3] \B,
+   [216 108] \L,
+   [279 323] \F,
+   [86 168] \B,
+   [118 352] \L,
+   [219 90] \C,
+   [213 280] \C,
+   [131 363] \B,
+   [80 364] \B,
+   [213 394] \B,
+   [78 5] \L,
+   [291 373] \F,
+   [91 298] \L,
+   [154 371] \F,
+   [298 162] \F,
+   [306 280] \L,
+   [246 375] \F,
+   [162 324] \F,
+   [209 134] \F,
+   [254 145] \F,
+   [209 56] \F,
+   [231 279] \C,
+   [157 233] \B})
+
+(def pboosters
+  {(->Point 12 74)
+   \L
+ (->Point 85 303)
+ \L
+ (->Point 27 298)
+ \F
+ (->Point 323 328)
+ \F
+ (->Point 88 163)
+ \B
+ (->Point 133 221)
+ \B
+ (->Point 8 378)
+ \B
+ (->Point 260 146)
+ \F
+ (->Point 51 343)
+ \F
+ (->Point 38 323)
+ \L
+ (->Point 324 323)
+ \B
+ (->Point 97 65)
+ \B
+ (->Point 307 240)
+ \F
+ (->Point 156 293)
+ \L
+ (->Point 167 378)
+ \C
+ (->Point 40 60)
+ \B
+ (->Point 284 358)
+ \F
+ (->Point 14 380)
+ \F
+ (->Point 144 230)
+ \R
+ (->Point 164 212)
+ \R
+ (->Point 303 3)
+ \B
+ (->Point 216 108)
+ \L
+ (->Point 279 323)
+ \F
+ (->Point 86 168)
+ \B
+ (->Point 118 352)
+ \L
+ (->Point 219 90)
+ \C
+ (->Point 213 280)
+ \C
+ (->Point 131 363)
+ \B
+ (->Point 80 364)
+ \B
+ (->Point 213 394)
+ \B
+ (->Point 78 5)
+ \L
+ (->Point 291 373)
+ \F
+ (->Point 91 298)
+ \L
+ (->Point 154 371)
+ \F
+ (->Point 298 162)
+ \F
+ (->Point 306 280)
+ \L
+ (->Point 246 375)
+ \F
+ (->Point 162 324)
+ \F
+ (->Point 209 134)
+ \F
+ (->Point 254 145)
+ \F
+ (->Point 209 56)
+ \F
+ (->Point 231 279)
+ \C
+ (->Point 157 233)
+ \B})
+
+
+(def oboosters
+  {(->oPoint 12 74)
+   \L
+ (->oPoint 85 303)
+ \L
+ (->oPoint 27 298)
+ \F
+ (->oPoint 323 328)
+ \F
+ (->oPoint 88 163)
+ \B
+ (->oPoint 133 221)
+ \B
+ (->oPoint 8 378)
+ \B
+ (->oPoint 260 146)
+ \F
+ (->oPoint 51 343)
+ \F
+ (->oPoint 38 323)
+ \L
+ (->oPoint 324 323)
+ \B
+ (->oPoint 97 65)
+ \B
+ (->oPoint 307 240)
+ \F
+ (->oPoint 156 293)
+ \L
+ (->oPoint 167 378)
+ \C
+ (->oPoint 40 60)
+ \B
+ (->oPoint 284 358)
+ \F
+ (->oPoint 14 380)
+ \F
+ (->oPoint 144 230)
+ \R
+ (->oPoint 164 212)
+ \R
+ (->oPoint 303 3)
+ \B
+ (->oPoint 216 108)
+ \L
+ (->oPoint 279 323)
+ \F
+ (->oPoint 86 168)
+ \B
+ (->oPoint 118 352)
+ \L
+ (->oPoint 219 90)
+ \C
+ (->oPoint 213 280)
+ \C
+ (->oPoint 131 363)
+ \B
+ (->oPoint 80 364)
+ \B
+ (->oPoint 213 394)
+ \B
+ (->oPoint 78 5)
+ \L
+ (->oPoint 291 373)
+ \F
+ (->oPoint 91 298)
+ \L
+ (->oPoint 154 371)
+ \F
+ (->oPoint 298 162)
+ \F
+ (->oPoint 306 280)
+ \L
+ (->oPoint 246 375)
+ \F
+ (->oPoint 162 324)
+ \F
+ (->oPoint 209 134)
+ \F
+ (->oPoint 254 145)
+ \F
+ (->oPoint 209 56)
+ \F
+ (->oPoint 231 279)
+ \C
+ (->oPoint 157 233)
+ \B})
+
+
+;; public int hashCode(){
+;;     int hash = this._hash;
+;; 	if(hash == 0)
+;; 		{
+;; 		hash = 1;
+;; 		for(int i = 0;i<count();i++)
+;; 			{
+;; 			Object obj = nth(i);
+;; 			hash = 31 * hash + (obj == null ? 0 : obj.hashCode());
+;; 			}
+;; 		this._hash = hash;
+;; 		}
+;; 	return hash;
+;; }
+
+;; public int hasheq(){
+;;     int hash = this._hasheq;
+;; 	if(hash == 0) {
+;;         int n;
+;;         hash = 1;
+
+;;         for(n=0;n<count();++n)
+;;             {
+;;             hash = 31 * hash + Util.hasheq(nth(n));
+;;             }
+
+;;         this._hasheq = hash = Murmur3.mixCollHash(hash, n);
+;; 	}
+;; 	return hash;
+;; }

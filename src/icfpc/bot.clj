@@ -10,7 +10,7 @@
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
-   [icfpc.core lev Point #_robot]
+   [icfpc.core lev Point robot]
    [icfpc.core.IFringe]))
 
 (def ^:dynamic *disabled* #{})
@@ -118,7 +118,7 @@
         level))
     level))
 
-#_(defn move [level dx dy action]
+(defn move [level dx dy action]
   (some-> level
     (map-bot  (fn [bot]
                 (with-slots [{:keys [x y path]} ^IPersistentMap bot]
@@ -130,7 +130,7 @@
     (extra-move dx dy)
    ))
 
-(defn move [level dx dy action]
+#_(defn move [level dx dy action]
   (some-> level
     (update-bot :x + dx)
     (update-bot :y + dy)
@@ -170,7 +170,6 @@
     :jump2 (jump level 2)
     WAIT   (update-bot level :path str WAIT)))
 
-
 (defn can-step?
   [x y drill? drilled  ^lev level]
   (and
@@ -200,7 +199,7 @@
                (.nth bots bot)]
     (cond
       ;;THis is a persistentmap invocation.  We're hashing the vector [x y]...
-      (boosters [x y])
+      (boosters #_(->Point x y) [x y])
       (if (or (not zones?) (== current-zone (get-zone level x y))) 100 0)
       :else
       (reduce
@@ -281,7 +280,7 @@
                       (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
               ;; jumps
               (when beakons?
-                (doseq [^Indexed mv (.deref ^clojure.lang.IDeref jumps)]
+                (doseq [^Indexed mv #_jumps (.deref ^clojure.lang.IDeref jumps)]
                   (let [pos' (.nth  mv 1)]
                     (when   ;;haven't visited [x y] yet.
                         (not (.has-fringe? paths pos'))

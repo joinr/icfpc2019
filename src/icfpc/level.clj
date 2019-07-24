@@ -84,6 +84,18 @@
       (let [idx (java.util.Arrays/binarySearch ys dy)]
         (when (> idx -1)
           (aget entries  idx))))))
+
+#_(let [kvs      (sort-by (comp :y key) (seq hand-blocks-map))
+      ^objects entries (object-array (map val (rest kvs)))
+      ;^ints ys (int-array (map (comp :y key) kvs))
+      negone   (val (first kvs))
+      ]
+  (defn hand-blocks [^long dx ^long dy]
+    (when (== dx 1)
+      (if (> dy -1)
+        (aget entries dy)
+        negone
+        ))))
   
 (defn valid?
   ([x y {:keys [width height] :as level}]
@@ -195,7 +207,21 @@
       (set-level level x y WRAPPED)
       level)))
 
+;;lots of calls ot hash lookups in points?
 (defn mark-wrapped [level]
+  (reduce
+   (fn [level xy]
+     (with-slots [[x y] ^Indexed xy]
+       (if (= EMPTY (get-level level x y))
+         (-> level
+             (set-level x y WRAPPED)
+             (update :zones-area #(update % (get-zone level x y) dec))
+             (update :empty dec))
+         level)))
+   (-> level pick-booster drill)
+   (bot-covering level)))
+
+#_(defn mark-wrapped [level]
   (with-slots [{:fields [boosters]} ^lev level]
     (reduce
      (fn [level [x y]]
@@ -207,6 +233,7 @@
          level))
      (-> level pick-booster drill)
      (bot-covering level))))
+
 
 (defn bounds [points]
   (let [xs (map first points)

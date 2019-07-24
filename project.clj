@@ -13,11 +13,13 @@
   :source-paths   ["src"]
   :resource-paths ["resources"]
   :main icfpc.main
-  :jvm-opts  ["-Xverify:none"
-              ;"-XX:+PrintCompilation"
-              ;"-XX:+UnlockDiagnosticVMOptions"
-              ;"-XX:+PrintInlining"
-              ]
+  :jvm-opts  ^:replace ["-server"
+                                        ;"-Xmx4g"
+                        "-Xverify:none"
+                                        ;"-XX:+PrintComypilation"
+                                        ;"-XX:+UnlockDiagnosticVMOptions"
+                                        ;"-XX:+PrintInlining"
+                        ]
   :plugins [[io.taylorwood/lein-native-image "0.3.0"]]  
 
   :global-vars {*warn-on-reflection* true

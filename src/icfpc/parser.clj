@@ -4,6 +4,18 @@
    [icfpc.core :refer :all]
    [icfpc.writer :as writer]))
 
+#_(defn parse-points [points-str]
+  (if (not-empty points-str)
+    (let [points-seq (split (->> points-str
+                                 (drop 1)
+                                 (drop-last 1)
+                                 (apply str))
+                            #"\),\(")]
+      (mapv (fn [p]
+              (apply ->Point (mapv #(Integer/parseInt %) (split p #",")))
+            points-seq))
+    [])))
+
 (defn parse-points [points-str]
   (if (not-empty points-str)
     (let [points-seq (split (->> points-str

@@ -1,4 +1,5 @@
-(ns icfpc.core)
+(ns icfpc.core
+  (:require [clojure.walk :as walk]))
 
 (defn queue [& xs]
   (into clojure.lang.PersistentQueue/EMPTY xs))
@@ -17,6 +18,35 @@
         (= c1 :when-some)    `(if-some ~c2 ~(first cs) (cond+ ~@(next cs)))
         :else                `(if ~c1 ~c2 (cond+ ~@cs))))))
 
+;;Thes helpers get out function invocation code for records on par
+;;with arraymaps.
+#_(defn case-aux [k kvs]
+  (when (seq kvs)
+    (case (count kvs)
+      1
+      kvs
+      (let [[o v] (take 2 kvs)]
+        `(if (identical? ~k ~o)
+           ~v
+           ~(case-aux k (drop 2 kvs)))))))
+
+#_(defmacro case-if [k & kvs]
+  (let [n (count kvs)
+        _ (assert (if (odd? n) (> n 1) true)
+                  "either use even cases or odd with final as a default")
+        s (gensym "k")]
+    `(let [~s ~k]
+       ~(case-aux s kvs))))
+
+;;somehow condp is faster than mine; they look identical, although the
+;predicate is bound earlier...
+(defmacro case-if [k & kvs]
+  (let [n (count kvs)
+        _ (assert (if (odd? n) (> n 1) true)
+                  "either use even cases or odd with final as a default")
+        s (gensym "k")]
+    `(condp identical? ~k ~@kvs)))
+
 (defmacro defrecord+
   "Like defrecord, but adds default map-like function application
    semantics to the record.  Fields are checked first in O(1) time,
@@ -28,19 +58,64 @@
                    []
                    (map vector fields (map #(with-meta % {})  keys)))
         
-        [_ name keys & impls] &form        
+        [_ name keys & impls] &form
         this (gensym "this")
-        k    (gensym "k")]
+        k    (gensym "k")
+        default (gensym "default")
+        n       (count keys)
+        caser   (if (<= n 8) 'case-if 'case)
+        rform (->> `(~'defrecord ~name ~keys ~@impls
+                     ~'clojure.lang.IFn
+                     (~'invoke [~this ~k]
+                      (~caser ~k
+                       ~@binds
+                       ~(if (-> keys meta :strict)
+                          `(throw (ex-info "key not in strict record" {:key ~k}))
+                          `(.valAt ~this ~k))))
+                     (~'invoke [~this ~k ~default]
+                      (~caser ~k
+                       ~@binds
+                       ~(if (-> keys meta :strict)
+                          `(throw (ex-info "key not in strict record" {:key ~k}))
+                          `(.valAt ~this ~k ~default)))))
+                    macroexpand-1
+                    (walk/postwalk-replace {'clojure.core/case caser
+                                            'case caser}))
+        ]
+    `(~@rform)))
+
+#_(defmacro defrecord+
+  "Like defrecord, but adds default map-like function application
+   semantics to the record.  Fields are checked first in O(1) time,
+   then general map lookup is performed."
+  [name keys & impls]
+  (let [fields (map keyword keys)
+        binds  (reduce (fn [acc [l r]]
+                     (conj acc l r))
+                   []
+                   (map vector fields (map #(with-meta % {})  keys)))
+        
+        [_ name keys & impls] &form
+        this (gensym "this")
+        k    (gensym "k")
+        default (gensym "default")
+        n       (count keys)
+        caser   (if (<= n 8) 'case-if 'case)
+        ]
     `(~'defrecord ~name ~keys ~@impls
       ~'clojure.lang.IFn
       (~'invoke [~this ~k]
-       (case ~k
+       (~caser ~k
          ~@binds
-         (.valAt ~this ~k)))
-      (~'invoke [~this ~k default#]
-       (case ~k
+         ~(if (-> keys meta :strict)
+            `(throw (ex-info "key not in strict record" {:key ~k}))
+            `(.valAt ~this ~k))))
+      (~'invoke [~this ~k ~default]
+       (~caser ~k
          ~@binds
-         (.valAt ~this ~k default#))))))
+         ~(if (-> keys meta :strict)
+            `(throw (ex-info "key not in strict record" {:key ~k}))
+            `(.valAt ~this ~k ~default)))))))
          
 
 (defmacro <*
@@ -69,7 +144,8 @@
 
 (deftype Point [^long x ^long y
                 ^:unsynchronized-mutable ^int _hasheq
-                ^:unsynchronized-mutable ^int _hash] 
+                ^:unsynchronized-mutable ^int _hash
+                ] 
   Object
   (toString [_] (str "(" x "," y ")"))
   ;;technique shamelessly borrowed from fastmath!
@@ -80,36 +156,35 @@
   clojure.lang.IHashEq
   (hasheq [this]
     (if (== _hasheq (int -1))
-      (let [h (unchecked-int (dhash-code (dhash-code x) y))]
+      (let [h (.hashCode this)]
         (do (set! _hasheq (int h))
             h))
       _hasheq))
   (hashCode [this]
     (if (== _hash (int -1))
-      (let [h (unchecked-int (dhash-code (dhash-code x) y))]
+      (let [h (mix-collection-hash
+               (unchecked-int (dhash-code (dhash-code x) y)) 2)]
         (do (set! _hash (int h))
             h))
       _hash))
-  (hashCode [_]
-    (try (unchecked-int (dhash-code (dhash-code x) y))
-         (catch Exception e (throw (ex-info "bad hash!" {:x x :y y})))))
   clojure.lang.Indexed
-  (nth [_ i]    (case i 0 x 1 y))
-  (nth [_ i nf] (case i 0 x 1 y nf))
+  (nth [_ i]    (case-if i 0 x 1 y))
+  (nth [_ i nf] (case-if i 0 x 1 y nf))
   clojure.lang.ILookup
-  (valAt [_ k]    (case k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
-  (valAt [_ k nf] (case k :x x :y y nf))
+  (valAt [_ k]    (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
+  (valAt [_ k nf] (case-if k :x x :y y nf))
   java.util.Map
   (get [this k] (.valAt this k))
   (put    [this k v]  (throw (ex-info "unsupported-op!" {})))
   (putAll [this c] (throw (ex-info "unsupported-op!" {})))
   (clear  [this] (throw (ex-info "unsupported-op!" {})))
   (containsKey   [this k]
-    (case k :x true :y true false))
+    (case-if k :x true :y true false))
   (containsValue [this o]
     (throw (ex-info "unsupported-op!" {})))
   (entrySet [this] (set (seq {:x x :y y})))
-  (keySet   [this] #{x y}))
+  (keySet   [this] #{x y})
+  )
 
 #_(definline ->Point [x y]
   `(Point. (long ~x) (long ~y) -1 -1))
@@ -163,6 +238,29 @@
     `(let [~b ~bm]
        (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
 
+(defrecord+ robot ^:strict [x y layout active-boosters picked-booster path current-zone plan])
+
+
+#_(definline new-bot [x y]
+  `(robot.             ~x 
+                       ~y
+                       [[0 0] [1 0] [1 1] [1 -1]]
+                       {}
+                       nil
+                       ""
+                       nil
+                       nil))
+
+#_(defn new-bot [x y]
+  (robot.             x 
+                      y
+                      [[0 0] [1 0] [1 1] [1 -1]]
+                      {}
+                      nil
+                      ""
+                      nil
+                      nil))
+
 (defn new-bot [x y]
   {:x               x 
    :y               y
@@ -173,7 +271,8 @@
    :current-zone    nil})
 
 (defrecord+ lev
-    [name
+  ^:strict
+  [name
      ^int  width
      ^int  height
      ^IByteMap grid
@@ -329,6 +428,5 @@
           init
           (range (alength arr))))
 
-
-
-
+       
+     
