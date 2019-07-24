@@ -40,24 +40,24 @@ as of +16+ 23 July 2019, the version in the `opt` branch, running the
 same function gives us:
 
 #+BEGIN_EXAMPLE
-98805ms Left 11 Solved prob-286 {:score 7932, :time 17262} was [elided]
-99117ms Left 10 Solved prob-292 {:score 8941, :time 9325} was [elided]
-102913ms Left 9 Solved prob-289 {:score 10288, :time 13075} was [elided]
-102976ms Left 8 Solved prob-296 {:score 3348, :time 3515} was [elided]
-104022ms Left 7 Solved prob-291 {:score 8883, :time 13732} was [elided]
-105662ms Left 6 Solved prob-297 {:score 4490, :time 5015} was [elided]
-109255ms Left 5 Solved prob-293 {:score 9953, :time 13185} was [elided]
-109271ms Left 4 Solved prob-294 {:score 9694, :time 9950} was [elided]
-112223ms Left 3 Solved prob-298 {:score 7142, :time 9122} was [elided]
-112786ms Left 2 Solved prob-295 {:score 7670, :time 9216} was [elided]
-114957ms Left 1 Solved prob-300 {:score 8879, :time 9014} was [elided]
-115395ms Left 0 Solved prob-299 {:score 10521, :time 7499} was [elided]
-DONE in 115395  ms
+91634ms Left 11 Solved prob-286 {:score 7932, :time 16512} was [elided]
+91916ms Left 10 Solved prob-292 {:score 8941, :time 8857} was [elided]
+95165ms Left 9 Solved prob-289 {:score 10288, :time 12388} was [elided]
+95321ms Left 8 Solved prob-296 {:score 3348, :time 3280} was [elided]
+96321ms Left 7 Solved prob-291 {:score 8883, :time 12966} was [elided]
+98227ms Left 6 Solved prob-297 {:score 4490, :time 4890} was [elided]
+100851ms Left 5 Solved prob-293 {:score 9953, :time 12481} was [elided]
+101616ms Left 4 Solved prob-294 {:score 9694, :time 9295} was [elided]
+104022ms Left 3 Solved prob-295 {:score 7670, :time 9154} was [elided]
+104131ms Left 2 Solved prob-298 {:score 7142, :time 8654} was [elided]
+106756ms Left 1 Solved prob-299 {:score 10521, :time 7202} was [elided]
+106834ms Left 0 Solved prob-300 {:score 8879, :time 8607} was [elided]
+DONE in 106834  ms
 #+END_EXAMPLE
 
-Or about a +6.91+ `8.52` fold improvement (assuming everything is still
+Or about a +6.91+ +8.52+ `9.21` fold improvement (assuming everything is still
 computing correctly, and timing is accurate), or down from ~16m 22s
-wall-clock to +2m 21s+ 1m 54s.  Comparisons of the baseline scores (in baseline
+wall-clock to +2m 21s+ +1m 54s+ `1m 46s`.  Comparisons of the baseline scores (in baseline
 branch, scores.edn) and the resulting scores (in opt branch,
 scores.edn) show problems have identical scores.
 
@@ -292,6 +292,17 @@ This leads to a simple macro `assoc*` which helps us along.
 On the large map instance, this alone netted about a 6% increase
 for modifying a single function `icfpc.bot/move`.
 
+** Variadic calls to str on hot path
+Replaced with `make-string` from spork.util.general,
+which has multiple arities that use string builders
+vs. the stock clojure.core/str.  Minor gains, single-point.
+** Lots of seq invocations from destructured for comprehension
+Reduction over the results of `bot-covering`, a lazy seq
+generated from a for comprehension doing destructuring.
+Rewrote as an eduction, composed with mapping an 
+efficient with-slots call to destructure and filtered.
+A few %point gains.  Could be rewritten more elegantly
+using the xforms librariy, with its for transducer.
 * Pending Efforts
 ** Load Level
 I spent a decent amount of time exploring optimizations here, and implemented
