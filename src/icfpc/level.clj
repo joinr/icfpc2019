@@ -216,7 +216,7 @@
   (with-slots [{:fields [^Indexed bots bot boosters]}    ^lev level
                {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
     ;;Possible slow path here...hashing [x y] pairs.
-    (if-some [booster (boosters [x y]) #_(boosters x y)]
+    (if-some [booster #_(boosters [x y]) (boosters x y)]
       (-> level
         (update :boosters dissoc [x y])
         (update-bot :picked-booster (constantly booster)))
