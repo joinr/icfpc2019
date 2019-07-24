@@ -72,8 +72,8 @@ the results are in rustrun.txt.
 
 On 2 threads, clojure comes in at:
 |Lang|implementation|ms|
-|----+--------------+-- |
-|Clojure|opt commit 107d811]203,353|
+|----|--------------|--|
+|Clojure|opt commit 107d811|203,353  |
 |Rust|master 6d2c5933|79635.0|
 
 The interesting part of this comparison, beyond the
