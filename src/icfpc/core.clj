@@ -135,8 +135,8 @@
   ;;technique shamelessly borrowed from fastmath!
   (equals [this v]
     (and (instance? Point v)
-         (and (== x (.x ^Point v))
-              (== y (.y ^Point v)))))
+         (bool-and (== x (.x ^Point v))
+                   (== y (.y ^Point v)))))
   clojure.lang.IHashEq
   (hasheq [this]
     (if (== _hasheq (int -1))
@@ -173,8 +173,8 @@
 #_(definline ->Point [x y]
   `(Point. (long ~x) (long ~y) -1 -1))
 
-(defn ^Point ->Point [x y]
-  (Point. (long x) (long y) -1 -1))
+(defn ^Point ->Point [^long x ^long y]
+  (Point. x y -1 -1))
 
 (defprotocol ILevel
   (lev-width   [level])
@@ -354,8 +354,8 @@
     `(let [^long w# (lev-width ~level)]
        (unchecked-add ^long ~x (unchecked-multiply ^long ~y w#))))
 
-(defn coord->idx ^long [level ^long x ^long y]
-  (let [^long w (lev-width level)]
+(defn coord->idx ^long [^lev level ^long x ^long y]
+  (let [w (.width level)]
     (+ x (* y w))))
 
 (defn get-level
@@ -372,23 +372,23 @@
                      (.getByte  ~b ~x ~y)
                      ~default))))
      :inline-arities #{3 4}}
-  ([level x y]  (get-byte (lev-grid level)  x y))
-  ([level ^long x ^long y default]
-   (if (and
-        (< -1 x ^int (lev-width  level))
-        (< -1 y ^int (lev-height level)))
-     (get-byte (lev-grid level) x y)
+  ([^lev level x y]  (get-byte (.lev_grid level)  x y))
+  ([^lev level ^long x ^long y default]
+   (if (bool-and
+        (< -1 x (.width  level))
+        (< -1 y (.height level)))
+     (get-byte (.lev_grid level) x y)
      default)))
 
-(definline set-level [level x y value]
-  `(do (set-byte (lev-grid ~level) ~x ~y ~value)
+(definline set-level [^lev level x y value]
+  `(do (set-byte (.lev_grid ~level) ~x ~y ~value)
        ~level))
 
-(defn get-zone [level x y]
-  (get-byte (lev-zones level) x y))
+(defn get-zone [^lev level x y]
+  (get-byte (.zones_grid level) x y))
 
-(defn zone-area ^long [level zone]
-  ((level :zones-area) zone))
+(defn zone-area ^long [^lev level zone]
+  ((.zones_area level) zone))
 
 (defn seek [pred coll]
   (some #(if (pred %) %) coll))
@@ -401,8 +401,8 @@
        (map path-score)
        (reduce clojure.core/max)))
 
-(defn level-score [level]
-  (->> (:bots level)
+(defn level-score [^lev level]
+  (->> (.bots level)
        (map #(path-score (:path %)))
        (reduce clojure.core/max)))
 

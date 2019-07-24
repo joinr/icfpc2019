@@ -4,7 +4,8 @@
    [icfpc.level :refer :all]
    [icfpc.parser :as parser]
    [icfpc.writer :as writer]
-   [fastmath.core :as m]))
+   [fastmath.core :as m])
+  (:import [icfpc.core lev]))
 
 (set! *unchecked-math* :warn-on-boxed)
 (m/use-primitive-operators)
@@ -40,18 +41,18 @@
           (recur (into (pop q) ns) parents')))
       (prn "CANT FIND PATH!"))))
 
-(defn fill-connected-component [level points target block]
+(defn fill-connected-component [^lev level points target block]
   (let [[i-x i-y]  (first points)
         include-last (rest points)
-        level (reduce (fn [level next-include]
+        level (reduce (fn [^lev level next-include]
                         (let [path (bfs level next-include target block)]
-                          (reduce (fn [level [px py]]
+                          (reduce (fn [^lev level [px py]]
                                     (set-level level px py target))
                                   level
                                   path)))
                       (set-level level i-x i-y target)
                       include-last)]
-    (reduce (fn [level [x y]]
+    (reduce (fn [^lev level [x y]]
               (set-level level x y target))
             level
             points)))
@@ -69,7 +70,7 @@
             parents' (reduce (fn [ps n]
                                (assoc ps n p))
                              parents ns)]
-        (recur (into (pop q) ns) parents' (reduce (fn [level [x y]]
+        (recur (into (pop q) ns) parents' (reduce (fn [^lev level [x y]]
                                                     (set-level level x y target))
                                                   level
                                                   ns)))
@@ -85,7 +86,7 @@
                  (clojure.set/difference (into #{} (mapcat #(neighbours level %) empty-fields))
                                          (into #{} empty-fields)))]
     (reduce
-     (fn [level [x y]]
+     (fn [^lev level [x y]]
        (set-level level x y EMPTY))
      level
      borders)))
@@ -159,7 +160,7 @@
            :when (not (exclude [x'' y'']))]
        [x'' y'']))))
 
-(defn add-edges [level puzzle]
+(defn add-edges [^lev level puzzle]
   (let [segments (writer/segments level)]
     (if (>= (count segments) ^int (:v-min puzzle))
       level
@@ -193,21 +194,21 @@
                     :collected-boosters {}
                     :active-boosters    {}
                     :path               ""}
-        level (reduce (fn [level [x y]]
+        level (reduce (fn [^lev level [x y]]
                         (set-level level x y OBSTACLE))
                       init-level
                       (:exclude puzzle))
         puzzle (add-boundaries level puzzle)
         level (fill-connected-component level (:include puzzle) EMPTY OBSTACLE)
         level (reduce
-               (fn [level [x y]]
+               (fn [^lev level [x y]]
                  (set-level level x y UNKNOWN))
                level
                (:exclude puzzle))
         level (fill-connected-component level (:exclude puzzle) OBSTACLE EMPTY)
         level (inflate-min-area level (min-area (:t-size puzzle)))
         level (fill-bfs level (last (:exclude puzzle)) OBSTACLE EMPTY)
-        level (reduce (fn [level [x y]]
+        level (reduce (fn [^lev level [x y]]
                         (set-level level x y EMPTY))
                       level
                       (points-by-value level UNKNOWN))

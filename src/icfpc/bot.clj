@@ -7,7 +7,8 @@
    [icfpc.level :refer :all]
    [icfpc.fringe :as fringe]
    [fastmath.core :as m]
-   [icfpc.speed :refer [with-slots]])
+   [icfpc.speed :refer [with-slots]]
+   [icfpc.speed.string :refer [make-string]])
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
@@ -43,8 +44,8 @@
                :bot/x
                :bot/y))
 
-(defn next-hand [level]
-  (let [layout (-> level :bots (nth (level :bot) ) :layout set)]
+(defn next-hand [^lev level]
+  (let [layout (-> (.bots level) (nth (.bot level)) :layout set)]
     (cond
       (contains? layout [1 0]) ;; rigth
       [1 (inc ^int (apply clojure.core/max (map second layout)))]
@@ -58,7 +59,7 @@
       (contains? layout [0 -1]) ;; down
       [(inc ^int (apply clojure.core/max (map first layout))) -1])))
 
-(defn add-extra-hand [{:keys [bots] :as level}]
+(defn add-extra-hand [^lev level]
   (when (and
           (not (*disabled* EXTRA_HAND))
           (booster-collected? level EXTRA_HAND))
@@ -68,8 +69,8 @@
         (update-bot :layout conj [x y])
         (update-bot :path str "B(" x "," y ")")))))
 
-(defn has-space? [{:keys [bots] :as level}]
-  (let [{:keys [^int x ^int y]} (nth bots (level :bot))]
+(defn has-space? [^lev level]
+  (let [{:keys [^int x ^int y]} (nth (.bots level) (.bot level))]
     (or
      (every? (fn [^long v] (== 0 (long (get-level level (+ x v) y OBSTACLE)))) (range 1 5))
      (every? (fn [^long v] (== 0 (long (get-level level (- x v) y OBSTACLE)))) (range 1 5))
@@ -97,15 +98,15 @@
         (update-bot :active-boosters update DRILL (fnil clojure.core/+ 0) 31)
         (update-bot :path str DRILL))))
 
-(defn set-beakon [{:keys [bots] :as level}]
-  (let [{:keys [^long x ^long y]} (nth bots (level :bot) )]
+(defn set-beakon [^lev level]
+  (let [{:keys [^long x ^long y]} (nth (.bots level) (.bot level))]
     (when (and
            (not (*disabled* TELEPORT))
            (booster-collected? level TELEPORT)
-           (not (contains? (level :beakons) [x y]))
+           (not (contains? (.beakons level) [x y]))
            (every?
             (fn [[^long bx ^long by]] (>= (+ (m/abs (- x bx)) (m/abs (- y by))) 50))
-            (level :beakons)))
+            (.beakons level)))
       (-> level
           (spend :collected-boosters TELEPORT)
           (update :beakons (fnil conj []) #_(->Point x y) [x y])
@@ -125,17 +126,18 @@
 ;;can guess is that inlining is a factor.
 ;;turns out it was the assoc, multi-arity
 ;;call to assoc incurs restfn debt.
-(defn move [level ^long dx ^long dy action]
+;;make-string gets us away from restfn,
+;;down for 8411, meh.
+(defn move [^lev level ^long dx ^long dy action]
   (some-> level
-          (map-bot  (fn [bot]
-                      (with-slots [{:keys [^long x ^long y path
-                                           ]} ^IPersistentMap bot]
-                        (assoc* bot :x    (+ x dx)
-                                :y    (+ y dy)
-                                :path (str path action)))))
-          (valid?)
-          (mark-wrapped)
-          (extra-move dx dy)))
+    (map-bot  (fn moveupd [bot]
+                (with-slots [{:keys [^long x ^long y path]} ^IPersistentMap bot]
+                  (assoc* bot :x    (+ x dx)
+                              :y    (+ y dy)
+                              :path (make-string #_str path action)))))
+    (valid?)
+    (mark-wrapped)
+    (extra-move dx dy)))
 
 ;;for some wierd reason, I think this version is more inlining friendly...
 ;;we get down to 8625 somehow...edit [multiple calls to
@@ -149,9 +151,9 @@
     (extra-move dx dy)
     (update-bot :path str action)))
 
-(defn jump [{:keys [bots] :as level} idx]
-  (when-some [[bx by] (nth (level :beakons) idx nil)]
-    (let [{:keys [x y]} (nth bots (level :bot) )]
+(defn jump [^lev level idx]
+  (when-some [[bx by] (nth (.beakons level) idx nil)]
+    (let [{:keys [x y]} (nth (.bots level) (.bot level) )]
       (when (not= [x y] [bx by])
         (-> level
           (update-bot :x (constantly bx))
@@ -159,11 +161,11 @@
           (mark-wrapped)
           (update-bot :path str JUMP "(" bx "," by ")"))))))
 
-(defn reduplicate [{:keys [bots spawns] :as level}]
-  (let [{:keys [x y]} (nth bots (level :bot) )]
+(defn reduplicate [^lev level]
+  (let [{:keys [x y]} (nth (.bots level) (.bot level) )]
     (when (and
             (booster-collected? level CLONE)
-            (spawns [x y]))
+            ((.spawns level) [x y]))
       (-> level
         (update-bot :path str REPLICATE)
         (update     :bots conj (new-bot x y))
@@ -183,8 +185,8 @@
 (defn can-step?
   [x y drill? drilled  ^lev level]
   (and
-   (< -1 ^long x ^int (.width level))
-   (< -1 ^long y ^int (.height level))
+   (< -1 ^long x (.width level))
+   (< -1 ^long y (.height level))
    (or
     drill?
     (drilled (->Point x y))
@@ -379,8 +381,8 @@
   #_(first (explore* level rate-fn))
   (.nth  ^Indexed (explore* level rate-fn) 0))
 
-(defn wait-off-fast [{:keys [bots] :as level}]
-  (let [{:keys [active-boosters x y]} (nth bots (level :bot)  )
+(defn wait-off-fast [^lev level]
+  (let [{:keys [active-boosters x y]} (nth (.bots level) (.bot level))
         ^long fast (active-boosters FAST_WHEELS 0)]
     (when (pos? fast)
       (repeat fast WAIT))))
@@ -468,13 +470,14 @@
                        (with-slots [[x y] ^Indexed xy]
                          (if (= (boosters [x y]) CLONE) 1 0)))))))
 
-(defn collect-clone [{:keys [boosters collected-boosters bot] :as level}]
-  (when (and
-          (= 0 bot )
-          (= 0 (collected-boosters CLONE 0))
-          (some (fn [[_ b]] (= b CLONE)) boosters))
-    (explore level (fn [[x y] level]
-                     (if (= (boosters [x y]) CLONE) 1 0)))))
+(defn collect-clone [^lev level]
+  (let [boosters (.boosters level)]
+    (when (and
+           (= 0 (.bot level))
+           (= 0 ((.collected-boosters level) CLONE 0))
+           (some (fn [[_ b]] (= b CLONE)) boosters))
+      (explore level (fn [[x y] level]
+                       (if (= (boosters [x y]) CLONE) 1 0))))))
 
 #_(defn goto-spawn [level]
   (with-slots [{:fields [bot ^Indexed bots  spawns collected-boosters]} ^lev level
@@ -489,11 +492,12 @@
                  (with-slots [[x y] ^Indexed xy]
                    (if (spawns [x y]) 1 0)))))))
 
-(defn goto-spawn [{:keys [bot bots spawns collected-boosters] :as level}]
-  (let [{:keys [x y]} (nth bots (level :bot))]
+(defn goto-spawn [^lev level]
+  (let [spawns (.spawns level)
+        {:keys [x y]} (nth (.bots level) (.bot level))]
     (when (and
-           (= 0 bot )
-           (pos? (long (collected-boosters CLONE 0)))
+           (= 0 (.bot level))
+           (pos? (long ((.collected-boosters level) CLONE 0)))
            (not (spawns [x y])))
       (explore level (fn [[x y] level]
                        (if (spawns [x y]) 1 0))))))
@@ -520,13 +524,13 @@
         (-> level
           (update-bot :current-zone (constantly (get-zone level x y)))))))) ;; TODO set path too
 
-(defn choose-next-zone [{:keys [bots] :as level}]
-  (let [{:keys [current-zone]} (nth bots (level :bot)  )]
+(defn choose-next-zone [^lev level]
+  (let [{:keys [current-zone]} (nth (.bots level) (.bot level)  )]
     (when (or (nil? current-zone)
               (== 0 (long (zone-area level current-zone))))
-      (let [taken        (set (map :current-zone bots))
+      (let [taken        (set (map :current-zone (.bots level)))
             unfinished   (set
-                          (for [[zone ^long area] (level :zones-area )
+                          (for [[zone ^long area] (.zones-area level)
                                 :when (pos? area)]
                             zone))
             untaken      (set/difference unfinished taken)
@@ -543,11 +547,11 @@
 ;(definline nempty [coll]
   
 
-(defn advance* [level]
+(defn advance* [^lev level]
   (cond+
-   :let [bot (nth (level :bots) (level :bot))]
+   :let [bot (nth (.bots level) (.bot level))]
 
-   :when-some [level' (when (level :zones?) (choose-next-zone level))]
+   :when-some [level' (when (.zones? level) (choose-next-zone level))]
    (recur level')
 
    :when-some [picked-booster (bot :picked-booster)]
