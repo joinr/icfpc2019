@@ -8,6 +8,16 @@
   (println x)
   x)
 
+(defmacro assoc* [m & kvs]
+  (let [sym (with-meta (gensym "map") {:tag 'clojure.lang.Associative})]
+    `(let [~sym ~m] (-> ~sym  ~@(for [[k f] (partition 2 kvs)] `(.assoc ~k ~f))))))
+
+
+#_(defmacro assoc* [m & kvs]
+  (let [sym (with-meta (gensym "map") {:tag 'clojure.lang.Associative})]
+    `(let [~sym ~m] (-> ~sym  ~@(for [[k f] (partition 2 kvs)] `(assoc ~k ~f))))))
+
+
 (defmacro cond+ [& clauses]
   (when clauses
     (let [[c1 c2 & cs] clauses]
@@ -131,8 +141,8 @@
             h))
       _hash))
   clojure.lang.Indexed
-  (nth [_ i]    (condp == i 0 x 1 y))
-  (nth [_ i nf] (condp == i 0 x 1 y nf))
+  (nth [_ i]    (case i 0 x 1 y))
+  (nth [_ i nf] (case i 0 x 1 y nf))
   clojure.lang.ILookup
   (valAt [_ k]    (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (valAt [_ k nf] (case-if k :x x :y y nf))

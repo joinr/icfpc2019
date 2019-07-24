@@ -117,18 +117,28 @@
         level))
     level))
 
+;;this one has at 8762 min...the only thing I
+;;can guess is that inlining is a factor.
+;;turns out it was the assoc, multi-arity
+;;call to assoc incurs restfn debt.
 (defn move [level dx dy action]
   (some-> level
     (map-bot  (fn [bot]
                 (with-slots [{:keys [x y path]} ^IPersistentMap bot]
-                  (assoc bot :x (+ x dx)
-                             :y (+ y dy)
-                             :path (str path action)))))
+                  (->  bot
+                       ;(assoc :x (+ x dx))
+                       ;(assoc :y (+ y dy))
+                       ;(assoc :path (str path action))
+                       (assoc* :x (+ x dx)
+                               :y (+ y dy)
+                               :path (str path action))))))
     (valid?)
     (mark-wrapped)
-    (extra-move dx dy)
-   ))
+    (extra-move dx dy)))
 
+;;for some wierd reason, I think this version is more inlining friendly...
+;;we get down to 8625 somehow...edit [multiple calls to
+;;update outweighed be variadic assoc costs]
 #_(defn move [level dx dy action]
   (some-> level
     (update-bot :x + dx)
