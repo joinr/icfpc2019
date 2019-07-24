@@ -420,7 +420,7 @@
            (= 0 ((.collected-boosters level) CLONE 0))
            (some (fn [[_ b]] (= b CLONE)) boosters))
       (explore level (fn [[x y] level]
-                       (if (= (boosters x y) CLONE) 1 0))))))
+                       (if (= (boosters [x y]) #_(boosters x y) CLONE) 1 0))))))
 
 #_(defn goto-spawn [level]
   (with-slots [{:fields [bot ^Indexed bots  spawns collected-boosters]} ^lev level
