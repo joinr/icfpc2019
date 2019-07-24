@@ -2,7 +2,7 @@
   :dependencies
   [[org.clojure/clojure   "1.10.1" #_"1.9.0"]
    [org.clojure/data.json "0.2.6"]
-
+   [generateme/fastmath "1.4.0-SNAPSHOT"]
    [primitive-math "0.1.6" :exclusions [org.clojure/clojure]]
    [criterium "0.4.5"]
    [clj-tuple "0.2.2" :exclusions [org.clojure/clojure]]
@@ -23,8 +23,8 @@
   :plugins [[io.taylorwood/lein-native-image "0.3.0"]]  
 
   :global-vars {*warn-on-reflection* true
-                ; *unchecked-math* :warn-on-boxed
-              }
+                                        ; *unchecked-math* :warn-on-boxed
+                }
 
   :native-image {:name "icfpc2019"
                  :opts ["--report-unsupported-elements-at-runtime"
@@ -33,4 +33,4 @@
                         "-H:ReflectionConfigurationFiles=reflectconfig.json"]
                  :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
   :profiles {:uberjar {:aot :all}
-             :dev {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.2.1"]]}})
+             :dev-2 {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.2.1"]]}})

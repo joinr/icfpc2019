@@ -3,7 +3,11 @@
    [icfpc.core :refer :all]
    [icfpc.level :refer :all]
    [icfpc.parser :as parser]
-   [icfpc.writer :as writer]))
+   [icfpc.writer :as writer]
+   [fastmath.core :as m]))
+
+(set! *unchecked-math* :warn-on-boxed)
+(m/use-primitive-operators)
 
 (defn build-path [parents point]
   (loop [path []
@@ -71,8 +75,8 @@
                                                   ns)))
       level)))
 
-(defn min-area [t-size]
-  (int (Math/ceil (* 0.2 (* t-size t-size)))))
+(defn min-area ^long [^long t-size]
+  (long (m/ceil (* 0.2 (* t-size t-size)))))
 
 (defn inflate [level]
   (let [empty-fields (points-by-value level EMPTY)
@@ -86,7 +90,7 @@
      level
      borders)))
 
-(defn inflate-min-area [level min-area]
+(defn inflate-min-area [level ^long min-area]
   (if (< (count (points-by-value level EMPTY)) min-area)
     (recur (inflate level) min-area)
     level))
@@ -118,66 +122,66 @@
 (defn add-edge-bottom [level segments puzzle]
   (let [exclude (set (:exclude puzzle))]
     (first
-      (for [[[x y] [x' y']] (map vector segments (next (cycle segments)))
-            :when (and (= y y') (> y 0) (< x x') (>= (- x' x) 3))
-            :let  [y'' (dec y)]
-            x''   (range (inc x) (dec x'))
-            :when (not (exclude [x'' y'']))]
-        [x'' y'']))))
+     (for [[[^long x ^long y] [^long x' ^long y']] (map vector segments (next (cycle segments)))
+           :when (and (= y y') (> y 0) (< x x') (>= (- x' x) 3))
+           :let  [y'' (dec y)]
+           x''   (range (inc x) (dec x'))
+           :when (not (exclude [x'' y'']))]
+       [x'' y'']))))
 
 (defn add-edge-top [level segments puzzle]
   (let [exclude (set (:exclude puzzle))]
     (first
-      (for [[[x y] [x' y']] (map vector segments (next (cycle segments)))
-            :when (and (= y y') (< y (:height level)) (< x' x) (>= (- x x') 3))
-            :let  [y'' y]
-            x''   (range (inc x') (dec x))
-            :when (not (exclude [x'' y'']))]
-        [x'' y'']))))
+     (for [[[^long x ^long y] [^long x' ^long y']] (map vector segments (next (cycle segments)))
+           :when (and (= y y') (< y ^int (:height level)) (< x' x) (>= (- x x') 3))
+           :let  [y'' y]
+           x''   (range (inc x') (dec x))
+           :when (not (exclude [x'' y'']))]
+       [x'' y'']))))
 
 (defn add-edge-left [level segments puzzle]
   (let [exclude (set (:exclude puzzle))]
     (first
-      (for [[[x y] [x' y']] (map vector segments (next (cycle segments)))
-            :when (and (= x x') (> x 0) (< y' y) (>= (- y y') 3))
-            :let  [x'' (dec x)]
-            y''   (range (inc y') (dec y))
-            :when (not (exclude [x'' y'']))]
-        [x'' y'']))))
+     (for [[[^long x ^long y] [^long x' ^long y']] (map vector segments (next (cycle segments)))
+           :when (and (= x x') (> x 0) (< y' y) (>= (- y y') 3))
+           :let  [x'' (dec x)]
+           y''   (range (inc y') (dec y))
+           :when (not (exclude [x'' y'']))]
+       [x'' y'']))))
 
 (defn add-edge-right [level segments puzzle]
   (let [exclude (set (:exclude puzzle))]
     (first
-      (for [[[x y] [x' y']] (map vector segments (next (cycle segments)))
-            :when (and (= x x') (< x (:width level)) (< y y') (>= (- y' y) 3))
-            :let  [x'' x]
-            y''   (range (inc y) (dec y'))
-            :when (not (exclude [x'' y'']))]
-        [x'' y'']))))
+     (for [[[^long x ^long y] [^long x' ^long y']] (map vector segments (next (cycle segments)))
+           :when (and (= x x') (< x ^int (:width level)) (< y y') (>= (- y' y) 3))
+           :let  [x'' x]
+           y''   (range (inc y) (dec y'))
+           :when (not (exclude [x'' y'']))]
+       [x'' y'']))))
 
 (defn add-edges [level puzzle]
   (let [segments (writer/segments level)]
-    (if (>= (count segments) (:v-min puzzle))
+    (if (>= (count segments) ^int (:v-min puzzle))
       level
       (let [[x y] (or (add-edge-bottom level segments puzzle)
-                    (add-edge-top   level segments puzzle)
-                    (add-edge-left  level segments puzzle)
-                    (add-edge-right level segments puzzle)
-                    (throw (Exception. (str "Can’t add enough edges: has " (count segments) " need " (:v-min puzzle)))))]
+                      (add-edge-top   level segments puzzle)
+                      (add-edge-left  level segments puzzle)
+                      (add-edge-right level segments puzzle)
+                      (throw (Exception. (str "Can’t add enough edges: has " (count segments) " need " (:v-min puzzle)))))]
         (recur (set-level level x y EMPTY) puzzle)))))
 
-(defn add-boundaries [{:keys [width height] :as level} puzzle]
+(defn add-boundaries [{:keys [^int width ^int height] :as level} puzzle]
   (let [exclude (set (:exclude puzzle))
         p1      (->> (map (fn [y] [2 y]) (range 2 (- height 2)))
-                  (seek #(not (exclude %))))
+                     (seek #(not (exclude %))))
         p2      (->> (map (fn [y] [(- width 2) y]) (range 2 (- height 2)))
-                  (reverse)
-                  (seek #(not (exclude %))))]
+                     (reverse)
+                     (seek #(not (exclude %))))]
     (update puzzle :include into [p1 p2])))
 
 (defn generate-level [puzzle-name]
   (let [puzzle (parser/parse-puzzle puzzle-name)
-        t-size (:t-size puzzle)
+        ^long t-size (:t-size puzzle)
         init-level {:name               (str puzzle-name ".desc")
                     :width              t-size
                     :height             t-size

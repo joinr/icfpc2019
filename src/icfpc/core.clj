@@ -1,5 +1,9 @@
 (ns icfpc.core
-  (:require [clojure.walk :as walk]))
+  (:require [clojure.walk :as walk]
+            [fastmath.core :as m]))
+
+(set! *unchecked-math* :warn-on-boxed)
+(m/use-primitive-operators)
 
 (defn queue [& xs]
   (into clojure.lang.PersistentQueue/EMPTY xs))
@@ -219,6 +223,7 @@
        (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
 
 (defrecord+ robot ^:strict [x y layout active-boosters picked-booster path current-zone plan])
+;; => icfpc.core.robot
 
 
 #_(definline new-bot [x y]
@@ -294,9 +299,9 @@
   (lev-weights [this] (.valAt this :weights))
   (lev-zones   [this] (.valAt this :zones-grid)))
 
-(def ^:const EMPTY (byte 0))
-(def ^:const OBSTACLE (byte 1))
-(def ^:const WRAPPED (byte 2))
+(def ^:const ^byte EMPTY (byte 0))
+(def ^:const ^byte OBSTACLE (byte 1))
+(def ^:const ^byte WRAPPED (byte 2))
 
 ;;Instructions that determine
 ;;our bot's movement and actions I think.
@@ -323,12 +328,12 @@
 (def ^:const REPLICATE  \C)
 
 (defn spend
-  ([v] (cond (nil? v) nil (> v 1) (dec v) :else 0))
+  ([^long v] (cond (nil? v) nil (> v 1) (dec v) :else 0))
   ([map k k2]
    (let [v ((map k) k2)]
      (cond
        (nil? v) map
-       (> v 1)  (update map k assoc k2 (dec v))
+       (> ^long v 1)  (update map k assoc k2 (dec ^long v))
        :else    (update map k dissoc k2)))))
 
 ;;These are all performance killers due to function
@@ -336,38 +341,42 @@
 
 ;;(defn coord->idx ^long [level x y] (+ x (* y (:width level))))
 #_(defn get-level
-  ([level x y]
-   (aget ^bytes (:grid level) (coord->idx level x y)))
-  ([ level x y default]
-   (if (and
-         (< -1 x (:width level))
-         (< -1 y (:height level)))
-     (aget ^bytes (:grid level) (coord->idx level x y))
-     default)))
+    ([level x y]
+     (aget ^bytes (:grid level) (coord->idx level x y)))
+    ([ level x y default]
+     (if (and
+          (< -1 x (:width level))
+          (< -1 y (:height level)))
+       (aget ^bytes (:grid level) (coord->idx level x y))
+       default)))
 
-(definline coord->idx [level x y]
-  `(let [w# (lev-width ~level)]
-     (unchecked-add ~x (unchecked-multiply ~y w#))))
+#_(definline coord->idx [level x y]
+    `(let [^long w# (lev-width ~level)]
+       (unchecked-add ^long ~x (unchecked-multiply ^long ~y w#))))
+
+(defn coord->idx ^long [level ^long x ^long y]
+  (let [^long w (lev-width level)]
+    (+ x (* y w))))
 
 (defn get-level
   "blah"
-  {:inline (fn
-             ([level x y]
-              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
-                `(.getByte ~b  ~x ~y)))
-             ([level x y default]
-              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
-                `(if (and
-                      (<* -1 ~x (lev-width ~level))
-                      (<* -1 ~y (lev-height ~level)))
-                   (.getByte  ~b ~x ~y)
-                 ~default))))
-    :inline-arities #{3 4}}
+  #_{:inline (fn
+               ([level ^long x ^long y]
+                (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+                  `(.getByte ~b  ~x ~y)))
+               ([level x y default]
+                (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+                  `(if (and
+                        (<* -1 ~x ^int (lev-width ~level))
+                        (<* -1 ~y ^int (lev-height ~level)))
+                     (.getByte  ~b ~x ~y)
+                     ~default))))
+     :inline-arities #{3 4}}
   ([level x y]  (get-byte (lev-grid level)  x y))
-  ([level x y default]
+  ([level ^long x ^long y default]
    (if (and
-        (<* -1 x (lev-width  level))
-        (<* -1 y (lev-height level)))
+        (< -1 x ^int (lev-width  level))
+        (< -1 y ^int (lev-height level)))
      (get-byte (lev-grid level) x y)
      default)))
 
@@ -378,7 +387,7 @@
 (defn get-zone [level x y]
   (get-byte (lev-zones level) x y))
 
-(defn zone-area [level zone]
+(defn zone-area ^long [level zone]
   ((level :zones-area) zone))
 
 (defn seek [pred coll]
@@ -389,13 +398,13 @@
 
 (defn sol-score [sol]
   (->> (clojure.string/split sol #"#")
-    (map path-score)
-    (reduce max)))
+       (map path-score)
+       (reduce clojure.core/max)))
 
 (defn level-score [level]
   (->> (:bots level)
-    (map #(path-score (:path %)))
-    (reduce max)))
+       (map #(path-score (:path %)))
+       (reduce clojure.core/max)))
 
 (defn arr-reduce [f init ^bytes arr]     
   (areduce arr i ret init
