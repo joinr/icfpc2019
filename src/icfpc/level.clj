@@ -13,6 +13,8 @@
   
 (def ^:dynamic *bot*)
 
+;;hot path
+;;this is on the move path, gets called quite a bit..
 (defn booster-active? [level booster]
   (-> level :bots (nth (level :bot) ) :active-boosters (get booster 0) pos?))
 
@@ -175,12 +177,26 @@
   (with-slots
     [{:fields [^Indexed bots bot]}   ^lev level
      {:keys [x y layout]}            ^IPersistentMap (.nth bots bot)]
+    (eduction  (map (fn [dxdy] 
+                      (with-slots [[dx dy] ^Indexed dxdy]
+                        (when (or (and (zero? dx) (zero? dy)
+                                       (valid? x y level))
+                                  (valid-hand? x y dx dy level))
+                          [(+ x dx) (+ y dy)]))))
+               (filter identity) layout)))
+               
+
+#_(defn bot-covering [level]
+  (with-slots
+    [{:fields [^Indexed bots bot]}   ^lev level
+     {:keys [x y layout]}            ^IPersistentMap (.nth bots bot)]
     (for [[dx dy] layout
           :when (if (= [0 0] [dx dy])
                   (valid? x y level)
                   (valid-hand? x y dx dy level))]
       [(+ x dx) (+ y dy)])))
 
+;;Gets called from mark-wrapped a bit.
 (defn pick-booster [level]
   (with-slots [{:fields [^Indexed bots bot boosters]}    ^lev level
                {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
@@ -199,16 +215,34 @@
     (booster-active? level DRILL)
     (update :bots update (level :bot)  spend :active-boosters DRILL)))
 
-(defn drill [level]
-  (with-slots [{:fields [^Indexed bots bot]}    ^lev level
-               {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
-    (if (and (booster-active? level DRILL)
-             (= OBSTACLE (get-level level x y)))
-      (set-level level x y WRAPPED)
-      level)))
+;;called from mark-wrapped.
+;;packing everything in the level.  opportunity to pass args in externally
+;;if we already unpacked them.
+(defn drill
+  [level]
+   (with-slots [{:fields [^Indexed bots bot]}    ^lev level
+                {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
+     (if (and (booster-active? level DRILL)
+              (= OBSTACLE (get-level level x y)))
+       (set-level level x y WRAPPED)
+       level)))
 
-;;lots of calls ot hash lookups in points?
+;;lots of calls to hash lookups in points?
+;;Todo: rewrite using xforms.
 (defn mark-wrapped [level]
+  (reduce
+   (fn [level xy]
+     (with-slots [[x y] ^Indexed xy]
+       (if (= EMPTY (get-level level x y))
+         (-> level
+             (set-level x y WRAPPED)
+             (update :zones-area #(update % (get-zone level x y) dec))
+             (update :empty dec))
+         level)))
+   (-> level pick-booster drill)
+   (bot-covering level)))
+
+#_(defn mark-wrapped [level]
   (reduce
    (fn [level xy]
      (with-slots [[x y] ^Indexed xy]

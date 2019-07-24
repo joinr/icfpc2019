@@ -6,7 +6,8 @@
    [icfpc.core :refer :all]
    [icfpc.level :refer :all]
    [icfpc.fringe :as fringe]
-   [icfpc.speed :refer [with-slots]])
+   [icfpc.speed :refer [with-slots]]
+   [icfpc.speed.string :refer [make-string]])
   (:import
    [java.util Collection HashMap HashSet ArrayDeque]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
@@ -121,13 +122,16 @@
 ;;can guess is that inlining is a factor.
 ;;turns out it was the assoc, multi-arity
 ;;call to assoc incurs restfn debt.
+
+;;make-string gets us away from restfn,
+;;down for 8411, meh.
 (defn move [level dx dy action]
   (some-> level
-    (map-bot  (fn [bot]
+    (map-bot  (fn moveupd [bot]
                 (with-slots [{:keys [x y path]} ^IPersistentMap bot]
                   (assoc* bot :x    (+ x dx)
                               :y    (+ y dy)
-                              :path (str path action)))))
+                              :path (make-string #_str path action)))))
     (valid?)
     (mark-wrapped)
     (extra-move dx dy)))
