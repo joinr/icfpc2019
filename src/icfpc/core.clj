@@ -18,26 +18,6 @@
         (= c1 :when-some)    `(if-some ~c2 ~(first cs) (cond+ ~@(next cs)))
         :else                `(if ~c1 ~c2 (cond+ ~@cs))))))
 
-;;Thes helpers get out function invocation code for records on par
-;;with arraymaps.
-#_(defn case-aux [k kvs]
-  (when (seq kvs)
-    (case (count kvs)
-      1
-      kvs
-      (let [[o v] (take 2 kvs)]
-        `(if (identical? ~k ~o)
-           ~v
-           ~(case-aux k (drop 2 kvs)))))))
-
-#_(defmacro case-if [k & kvs]
-  (let [n (count kvs)
-        _ (assert (if (odd? n) (> n 1) true)
-                  "either use even cases or odd with final as a default")
-        s (gensym "k")]
-    `(let [~s ~k]
-       ~(case-aux s kvs))))
-
 ;;somehow condp is faster than mine; they look identical, although the
 ;predicate is bound earlier...
 (defmacro case-if [k & kvs]
@@ -50,7 +30,24 @@
 (defmacro defrecord+
   "Like defrecord, but adds default map-like function application
    semantics to the record.  Fields are checked first in O(1) time,
-   then general map lookup is performed."
+   then general map lookup is performed.  Users may supply and optional
+   ^:static hint for the arg vector, which will enforce the invariant
+   that the record always and only has the pre-defined fields, and
+   will throw an exception on any operation that tries to access
+   fields outside of the predefined static fields.  This moves
+   the record into more of a struct-like object.
+
+   Note: this is not a full re-immplementation of defrecord,
+   and still leverages the original's code emission.  The main
+   difference is the implementation of key-lookup semantics
+   ala maps-as-functions, and drop-in performance that should
+   be equal-to or superior to the clojure.core/defrecord
+   implementation.  Another refinement that makes arraymaps
+   superior for fields <= 8, is the avoidance of a case dispatch
+   which is slower in practice than a linear scan or a
+   sequential evaluation of if identical? expressions.
+   Small records defined in this way should be competitive
+   in general purpose map operations."
   [name keys & impls]
   (let [fields (map keyword keys)
         binds  (reduce (fn [acc [l r]]
@@ -83,40 +80,6 @@
                                             'case caser}))
         ]
     `(~@rform)))
-
-#_(defmacro defrecord+
-  "Like defrecord, but adds default map-like function application
-   semantics to the record.  Fields are checked first in O(1) time,
-   then general map lookup is performed."
-  [name keys & impls]
-  (let [fields (map keyword keys)
-        binds  (reduce (fn [acc [l r]]
-                     (conj acc l r))
-                   []
-                   (map vector fields (map #(with-meta % {})  keys)))
-        
-        [_ name keys & impls] &form
-        this (gensym "this")
-        k    (gensym "k")
-        default (gensym "default")
-        n       (count keys)
-        caser   (if (<= n 8) 'case-if 'case)
-        ]
-    `(~'defrecord ~name ~keys ~@impls
-      ~'clojure.lang.IFn
-      (~'invoke [~this ~k]
-       (~caser ~k
-         ~@binds
-         ~(if (-> keys meta :strict)
-            `(throw (ex-info "key not in strict record" {:key ~k}))
-            `(.valAt ~this ~k))))
-      (~'invoke [~this ~k ~default]
-       (~caser ~k
-         ~@binds
-         ~(if (-> keys meta :strict)
-            `(throw (ex-info "key not in strict record" {:key ~k}))
-            `(.valAt ~this ~k ~default)))))))
-         
 
 (defmacro <*
   "Evaluates exprs one at a time, from left to right, ensuring
@@ -168,8 +131,8 @@
             h))
       _hash))
   clojure.lang.Indexed
-  (nth [_ i]    (case-if i 0 x 1 y))
-  (nth [_ i nf] (case-if i 0 x 1 y nf))
+  (nth [_ i]    (condp == i 0 x 1 y))
+  (nth [_ i nf] (condp == i 0 x 1 y nf))
   clojure.lang.ILookup
   (valAt [_ k]    (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (valAt [_ k nf] (case-if k :x x :y y nf))
@@ -189,7 +152,7 @@
 #_(definline ->Point [x y]
   `(Point. (long ~x) (long ~y) -1 -1))
 
-(defn ->Point [x y]
+(defn ^Point ->Point [x y]
   (Point. (long x) (long y) -1 -1))
 
 (defprotocol ILevel
