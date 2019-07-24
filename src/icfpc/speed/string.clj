@@ -21,8 +21,9 @@
         ~@(for [a (rest args)]
             `(.append (simple-str  ~a)))))))
 
-(def ^:constant +max-params+ 15)
-(defn string-func-body [n]
+(def ^:const ^long +max-params+ 15)
+
+(defn string-func-body [^long n]
   (let [obj (with-meta (gensym "obj") {:tag 'Object})]
     (assert (>= n 0))
     (if (<= n +max-params+)
@@ -39,9 +40,9 @@
                      (conj '&)
                      (conj 'rest)
                      (with-meta {:tag String}))] 
-      `(~args
-        (build-string (build-string ~@baseargs) 
-                      (apply clojure.core/str ~'rest)))))))
+        `(~args
+          (build-string (build-string ~@baseargs) 
+                        (apply clojure.core/str ~'rest)))))))
 
 ;;Positional definitions of str, to eliminate arrayseq overhead due 
 ;;to varargs version of str.  Since we're making lots of strings,

@@ -5,38 +5,45 @@
    [icfpc.core :refer :all]
    [icfpc.parser :as parser]
    [icfpc.speed :refer [with-slots]]
-   [icfpc.fringe :as fringe])
+   [icfpc.fringe :as fringe]
+   [fastmath.core :as m])
   (:import
    [java.util Arrays]
    [clojure.lang Indexed Counted IPersistentMap IPersistentVector IPersistentSet]
    [icfpc.core lev Point IByteMap]))
-  
+
+(set! *unchecked-math* :warn-on-boxed)
+(m/use-primitive-operators)
+
+(defn fast-pos? [^long a] (pos? a))
+(defn fast+ {:inline (fn [^long x ^long y] `(+ ~x ~y)) :inline-arities #{2}} ^long [^long a ^long b] (+ a b))
+
 (def ^:dynamic *bot*)
 
 ;;hot path
 ;;this is on the move path, gets called quite a bit..
-(defn booster-active? [level booster]
-  (-> level :bots (nth (level :bot) ) :active-boosters (get booster 0) pos?))
+(defn booster-active? [^lev level booster]
+  (-> level :bots (nth (.bot level) ) :active-boosters (get booster 0) fast-pos?))
 
 (defn booster-collected? [level booster]
-  (-> level :collected-boosters (get booster 0) pos?))
+  (-> level :collected-boosters (get booster 0) fast-pos?))
 
-#_(defn update-bot [level key f & args]
+(defn update-bot [level key f & args]
   (apply update level :bots update (level :bot) update key f args))
 
-(defmacro update-bot [level key f & args]
-  `(update ~level :bots
-           (fn [arg#]
-             (update arg# (~level :bot)
-                     (fn [inner#]
-                       (update inner# ~key (fn [final#]
-                                             (~f final# ~@args))))))))
+#_(defmacro update-bot [level key f & args]
+    `(update ~level :bots
+             (fn [arg#]
+               (update arg# (~level :bot)
+                       (fn [inner#]
+                         (update inner# ~key (fn [final#]
+                                               (~f final# ~@args))))))))
 
 
-(defmacro map-bot [level f & args]
+(defmacro map-bot [^lev level f & args]
   `(update ~level :bots
            (fn [arg#]
-             (update arg# (~level :bot)
+             (update arg# (.bot ~level)
                      (fn [inner#]
                        (~f inner# ~@args))))))
 
@@ -63,15 +70,17 @@
                               (for [y (range 1 (inc (quot maxy 2)))] [0 y])
                               (for [y (range (int (Math/ceil (/ maxy 2.0))) (inc maxy))] [1 y])))])))
 
+(def ^:const init-map {(->Point 1 -1) [[1 -1]]
+                       (->Point 1 0)  [[1 0]]
+                       (->Point 1 1)  [[1 1]]})
+
 (def hand-blocks-map
-  (into {(->Point 1 -1) [[1 -1]]
-         (->Point 1 0)  [[1 0]]
-         (->Point 1 1)  [[1 1]]}
-    (for [maxy (range 2 20)]
-      [(->Point 1 maxy) (vec
-                          (concat
-                            (for [y (range 1 (inc (quot maxy 2)))] [0 y])
-                            (for [y (range (int (Math/ceil (/ maxy 2.0))) (inc maxy))] [1 y])))])))
+  (into init-map
+        (for [^long maxy (range 2 20)]
+          [(->Point 1 maxy) (vec
+                             (concat
+                              (map #(vector 0 %) (range 1 (inc (quot maxy 2))))
+                              (map #(vector 1 %) (range (int (m/ceil (/ maxy 2.0))) (inc maxy)))))])))
 
 
 ;;We can just make this into an array lookup,
@@ -100,17 +109,17 @@
         ))))
   
 (defn valid?
-  ([x y {:keys [width height] :as level}]
-    (when (and
-            (<* -1 x width)
-            (<* -1 y height)
-            (or
-              (booster-active? level DRILL)
-              (not= OBSTACLE (get-level level x y))))
-      level))
-  ([{:keys [bots] :as level}]
-    (let [{:keys [x y]} (nth bots (level :bot) )]
-      (valid? x y level))))
+  ([^long x ^long y ^lev level]
+   (when (and
+          (< -1 x (.width level))
+          (< -1 y (.height level))
+          (or
+           (booster-active? level DRILL)
+           (not= OBSTACLE (get-level level x y))))
+     level))
+  ([^lev level]
+   (let [{:keys [x y]} (nth (.bots level) (.bot level))]
+     (valid? x y level))))
 
 ;; (defn valid?
 ;;   ([x y {:keys [width height] :as level}]
@@ -144,20 +153,21 @@
 #_(defn obstacle?  [level x y dx' dy']
   (not (identical? OBSTACLE (get-level level (unchecked-add x dx') (unchecked-add y dy')))))
 
-(defn obstacle?  [level x y dx' dy']
-  (not= OBSTACLE (get-level level (+ x dx') (+ y dy'))))
+(set! *unchecked-math* false)
+
+(defn obstacle?  [^lev level x y dx' dy']
+  (not= OBSTACLE (get-level level (+ ^long x ^long dx') (+ ^long y ^long dy'))))
 
 ;;perf: this is a hot spot
 ;;perf: dstructuring of map args costs "some"
-(defn valid-hand? [x y dx dy  level]
+(defn valid-hand? [x y dx dy  ^lev level]
   (with-slots
-    [{:fields [width height]} ^lev level
-     ;;using unchecked math here will actually cause out answer to diverge!
+    [;;using unchecked math here will actually cause out answer to diverge!
      ;;unknown why the math is sensitive...
-     x' (+ x dx) y' (+ y dy)] ;;perf: hinted numeric ops could help here...
+     x' (+ ^long x ^long dx) y' (+ ^long y ^long dy)] ;;perf: hinted numeric ops could help here...
     (when (and
-           (<* -1 x' width)  ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
-           (<* -1 y' height) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+           (< -1 x' (.width level)) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
+           (< -1 y' (.height level)) ;;perf: calls to variadic fn <, clojure.lang.numbers boxed comp.
            (every-fast? ;;perf: every? coerces to seq, some cost from chunking.
             ;;perf: not= is comparing ifpc.core/OBSTACLE (a byte boxed in a var...) to result from
             ;;get-level.  Going though boxed comparison, possible optimization is (not (identical? ...))
@@ -171,14 +181,17 @@
             (or (hand-blocks dx dy) (throw (Exception. (str "Unknown hand offset" dx dy))))))
       level)))
 
+(set! *unchecked-math* :warn-on-boxed)
+
+
 ;;look and see if we can slotify the for
 ;;expression here, need to filter.
 (defn bot-covering [level]
   (with-slots
     [{:fields [^Indexed bots bot]}   ^lev level
-     {:keys [x y layout]}            ^IPersistentMap (.nth bots bot)]
+     {:keys [^long x ^long y layout]}            ^IPersistentMap (.nth bots bot)]
     (eduction  (map (fn [dxdy] 
-                      (with-slots [[dx dy] ^Indexed dxdy]
+                      (with-slots [[^long dx ^long dy] ^Indexed dxdy]
                         (when (or (and (zero? dx) (zero? dy)
                                        (valid? x y level))
                                   (valid-hand? x y dx dy level))
@@ -209,19 +222,19 @@
         (update-bot :picked-booster (constantly booster)))
       level)))
 
-(defn wear-off-boosters [level]
+(defn wear-off-boosters [^lev level]
   (cond-> level
     (booster-active? level FAST_WHEELS)
-    (update :bots update (level :bot)  spend :active-boosters FAST_WHEELS)
+    (update :bots update (.bot level)  spend :active-boosters FAST_WHEELS)
 
     (booster-active? level DRILL)
-    (update :bots update (level :bot)  spend :active-boosters DRILL)))
+    (update :bots update (.bot level)  spend :active-boosters DRILL)))
 
 ;;called from mark-wrapped.
 ;;packing everything in the level.  opportunity to pass args in externally
 ;;if we already unpacked them.
 (defn drill
-  [level]
+  [^lev level]
    (with-slots [{:fields [^Indexed bots bot]}    ^lev level
                 {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
      (if (and (booster-active? level DRILL)
@@ -233,50 +246,48 @@
 ;;Todo: rewrite using xforms.
 (defn mark-wrapped [level]
   (reduce
-   (fn [level xy]
+   (fn [^lev level xy]
      (with-slots [[x y] ^Indexed xy]
        (if (= EMPTY (get-level level x y))
          (-> level
              (set-level x y WRAPPED)
-             (update :zones-area #(update % (get-zone level x y) dec))
-             (update :empty dec))
+             (update :zones-area #(update % (get-zone level x y) clojure.core/dec))
+             (update :empty clojure.core/dec))
          level)))
    (-> level pick-booster drill)
    (bot-covering level)))
 
 (defn bounds [points]
-  (let [xs (map first points)
-        ys (map second points)]
-    [(apply max xs) (apply max ys)]))
+  [(apply clojure.core/max (map first points)) (apply clojure.core/max (map second points))])
+
+(defrecord VSegments [^long x ^long from-y ^long to-y])
 
 ;;possible slow path here with destructiring...check profiling.
 (defn vertical-segments [corners]
   (let [segments (partition 2 1 (into corners (take 1 corners)))]
-    (keep (fn [[[from-x from-y] [to-x to-y]]]
+    (keep (fn [[[^long from-x ^long from-y] [^long to-x ^long to-y]]]
             (when (= from-x to-x)
-              {:x from-x
-               :from-y (min from-y to-y)
-               :to-y (max from-y to-y)}))
+              (->VSegments from-x
+                           (min from-y to-y)
+                           (max from-y to-y))))
           segments)))
 
-(defn fill-level [level corners obstacles]
+(defn fill-level [^lev level corners obstacles]
   (let [segments (sort-by :x (apply concat (into [(vertical-segments corners)] (map vertical-segments) obstacles)))]
-    (reduce (fn [level y]
-              (let [xs (map :x (filter (fn [m]
-                                         (let [from-y (m :from-y)
-                                               to-y   (m :to-y)]
-                                           (and (<= from-y y) (< y to-y))))
-                                         segments))
+    (reduce (fn [level ^long y]
+              (let [xs (mapv :x (filter (fn [^VSegments m]
+                                          (bool-and (<= (.from-y m) y) (< y (.to-y m))))
+                                        segments))
                     rs (take-nth 2 (partition 2 1 xs))]
                 (reduce (fn [level [from-x to-x]]
-                          (reduce (fn [level x]
+                          (reduce (fn [^lev level x]
                                     (set-level level x y EMPTY))
                                   level
                                   (range from-x to-x)))
                         level
                         rs)))
             level
-            (range (:height level)))))
+            (range (.height level)))))
 
 (defn build-boosters [boosters]
   (into {}
@@ -292,36 +303,36 @@
 
 ;;minor time sink for load-level, could
 ;;be optimized a bit
-(defn weights [{:keys [width height] :as level}]
+(defn weights [^lev level]
   (short-array
-    (for [y (range 0 height)
-          x (range 0 width)]
-      (reduce + 0
-         (for [dxdy [[0 1] [0 -1] [-1 0] [1 0] [1 1] [-1 -1] [-1 1] [1 -1]]]
-           (with-slots [[dx dy] ^Indexed dxdy
-                        x' (+ x dx)
-                        y' (+ y dy)]
-             (if (or (< x' 0) (>= x' width) (< y' 0) (>= y' height)
-                     (= (get-level level x' y') OBSTACLE))
-               1
-               0)))))))
+   (for [^long y (range 0 (.height level))
+         ^long x (range 0 (.width level))]
+     (reduce fast+ 0
+             (for [dxdy [[0 1] [0 -1] [-1 0] [1 0] [1 1] [-1 -1] [-1 1] [1 -1]]]
+               (with-slots [[^long dx ^long dy] ^Indexed dxdy
+                            x' (+ x dx)
+                            y' (+ y dy)]
+                 (if (or (< x' 0) (>= x' (.width level)) (< y' 0) (>= y' (.height level))
+                         (= (get-level level x' y') OBSTACLE))
+                   1
+                   0)))))))
 
 ;;inline possibility here...
 (defn valid-point?
-  ([{:keys [width height] :as level} xy]
-   (valid-point? width height xy))
-  ([width height xy]
-   (with-slots  [[x y]  ^Indexed xy]
-     (and (<* -1 x width) (<* -1 y height)))))
+  ([^lev level xy]
+   (valid-point? (.width level) (.height level) xy))
+  ([^long width ^long height xy]
+   (with-slots  [[^long x ^long y]  ^Indexed xy]
+     (and (< -1 x width) (< -1 y height)))))
 
-(defn neighbours [level [x y]]
+(defn neighbours [level [^long x ^long y]]
   (with-slots [{:fields [width height]}  ^lev level]
     (filter #(valid-point? width height %)
             [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))
 
 (defn zone? [width height keep? xy]
   (transduce (comp (comp (mapcat (fn expand [xy]
-                                   (with-slots [[x y] ^Indexed xy]
+                                   (with-slots [[^long x ^long y] ^Indexed xy]
                                      [[(inc x) y] [(dec x) y] [x (inc y)] [x (dec y)]])))
                          (filter (fn valid [xy] (valid-point? width height xy))))
                    (comp (keep keep?)
@@ -342,9 +353,9 @@
               nil
               [~xy]))
 
-(defn points-by-value [level value]
-  (for [i (range 0 (level :width ))
-        j (range 0 (level :height ))
+(defn points-by-value [^lev level value]
+  (for [i (range 0 (.width level))
+        j (range 0 (.height level))
         :when (= value (get-level level i j))]
     [i j]))
 
@@ -363,38 +374,38 @@
   (let [xs   (with-meta (gensym "xs")   {:tag 'clojure.lang.ISeq})
         nxny (with-meta (gensym "nxny") {:tag 'Indexed})
         p    (with-meta (gensym "p")    {:tag 'Indexed})]
-  `(loop [end?# true
-          ~xs   ~points]
-     (if-let [~p (.first ~xs)]
-       (with-slots
-         [[x# y#] ~p]
-         (if (= (get-byte ~zone-grid x# y#)0)
-           (let [z# (zone? ~width ~height
-                          (fn ~'not-empty [~nxny]
-                            (with-slots 
-                              [[nx# ny#] ~nxny]
-                              (when (= EMPTY (get-byte ~grid nx# ny#))
-                                (let [z# (get-byte ~zone-grid nx# ny#)]
-                                  (when (not (zero? z#))
-                                    z#)))))
-                          ~p)]
-            (recur (if (some? z#)
-                     (do (set-byte ~zone-grid x# y# z#)
-                         end?#)
-                     false)
-                   (.more ~xs)))
-           (recur end?# (.more ~xs))))
-       end?#))))
+    `(loop [end?# true
+            ~xs   ~points]
+       (if-let [~p (.first ~xs)]
+         (with-slots
+           [[x# y#] ~p]
+           (if (= (get-byte ~zone-grid x# y#)0)
+             (let [z# (zone? ~width ~height
+                             (fn ~'not-empty [~nxny]
+                               (with-slots 
+                                 [[nx# ny#] ~nxny]
+                                 (when (= EMPTY (get-byte ~grid nx# ny#))
+                                   (let [z# (get-byte ~zone-grid nx# ny#)]
+                                     (when (not (zero? (long z#)))
+                                       z#)))))
+                             ~p)]
+               (recur (if (some? z#)
+                        (do (set-byte ~zone-grid x# y# z#)
+                            end?#)
+                        false)
+                      (.more ~xs)))
+             (recur end?# (.more ~xs))))
+         end?#))))
       
-(defn generate-zones [level bots]
-  (let [width  (level :width)
-        height (level :height)
-        grid   (level :grid)
+(defn generate-zones [^lev level bots]
+  (let [width  (.width level)
+        height (.height level)
+        grid   (.grid level)
         max-iteration-count (* width height)
         ;;these are all long pairs....
         empty-points (points-by-value level EMPTY)
         zones-count  bots
-        centers (map-indexed (fn [idx z] [(inc idx) z]) (take zones-count (shuffle* empty-points)))
+        centers (map-indexed (fn [^long idx z] [(inc idx) z]) (take zones-count (shuffle* empty-points)))
         zone-grid (->byte-grid width height)
         zones-map {:width  width
                    :height height
@@ -415,10 +426,10 @@
                         (recur zones (unchecked-inc iteration))
                         (do
                           (when (= iteration max-iteration-count)
-                            (println "Can’t generate zones for" (level :name )))
+                            (println "Can’t generate zones for" (.name level)))
                           zones))))
         zones-area (into {}
-                         (map
+                         (mapv
                           (fn [z-points]
                             (with-slots [[z ^Counted points] ^Indexed z-points]
                               [z (.count points)]))
@@ -427,7 +438,7 @@
                                                 :when (= EMPTY (get-byte grid x y))]
                                             [(get-byte zone-grid x y) [x y]]))))
         level (assoc level :zones-grid (zones-map :grid)
-                           :zones-area zones-area)
+                     :zones-area zones-area)
         update-bot (fn [bot]
                      (assoc bot :current-zone (get-zone level (bot :x) (bot :y))))
         level (update level :bots #(mapv update-bot %))]
@@ -439,10 +450,10 @@
     (if (.exists buy)
       (let [bonuses (str/trim (slurp buy))]
         (reduce
-          (fn [level bonus]
-            (update level :collected-boosters update bonus (fnil inc 0)))
-          level
-          bonuses))
+         (fn [level bonus]
+           (update level :collected-boosters update bonus (fnil clojure.core/inc 0)))
+         level
+         bonuses))
       level)))
 
 (defn booster-map [w h boosters]
@@ -482,24 +493,24 @@
         [width height] (bounds corners)
         grid       (->byte-grid width height) 
         _          (fill-bytes (grid) OBSTACLE)
-        init-level {:name     name
-                    :width    width
-                    :height   height
-                    :grid     grid
-                    :boosters (build-boosters boosters)
-                    :spawns   (build-spawns boosters)
-                    :collected-boosters {}
-                    :bots     [(new-bot (first bot-point) (second bot-point))]}
+        init-level (map->lev {:name     name
+                              :width    width
+                              :height   height
+                              :grid     grid
+                              :boosters (build-boosters boosters)
+                              :spawns   (build-spawns boosters)
+                              :collected-boosters {}
+                              :bots     [(new-bot (first bot-point) (second bot-point))]})
         level (fill-level init-level corners obstacles)
-        empty (arr-reduce2  #(if (= EMPTY %2) (inc %1) %1) 0 (grid) )
+        empty (arr-reduce2  #(if (= EMPTY %2) (inc ^long %1) %1) 0 (grid) )
         level (assoc level
                      :weights (weights level)
                      :empty   empty)
         level (maybe-add-bonuses level name)
         clones-count (+ 
-                       (count (filter #(= CLONE (val %)) (level :boosters )))
-                       ((level :collected-boosters ) CLONE 0)
-                       1)
+                      (count (filter #(= CLONE (val %)) (level :boosters )))
+                      (int ((level :collected-boosters ) CLONE 0))
+                      1)
         fringe  (fringe/->bit-fringe width height)]
     (-> (generate-zones level clones-count)
         (assoc :fringe fringe :boosters (booster-map width height (:boosters level)))

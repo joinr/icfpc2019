@@ -1,5 +1,9 @@
 (ns icfpc.core
-  (:require [clojure.walk :as walk]))
+  (:require [clojure.walk :as walk]
+            [fastmath.core :as m]))
+
+(set! *unchecked-math* :warn-on-boxed)
+(m/use-primitive-operators)
 
 (defn queue [& xs]
   (into clojure.lang.PersistentQueue/EMPTY xs))
@@ -111,16 +115,26 @@
 
 ;;fastmath
 ;;https://github.com/generateme/fastmath/blob/master/src/fastmath/vector.clj
+#_(defn- dhash-code
+    "double hashcode"
+    (^long [^long state ^double a]
+     (let [abits (Double/doubleToLongBits a)
+           elt (bit-xor abits (>>> abits 32))]
+       (+ elt (* 31 state))))
+    (^long [^double a]
+     (let [abits (Double/doubleToLongBits a)
+           elt (bit-xor abits (>>> abits 32))]
+       (+ elt 31))))
+
+;; above is good for doubles
 (defn- dhash-code
-  "double hashcode"
-  (^long [^long state ^double a]
-   (let [abits (Double/doubleToLongBits a)
-         elt (bit-xor abits (unsigned-bit-shift-right abits 32))]
-     (unchecked-add elt (unchecked-multiply 31 state))))
-  (^long [^double a]
-   (let [abits (Double/doubleToLongBits a)
-         elt (bit-xor abits (unsigned-bit-shift-right abits 32))]
-     (unchecked-add elt 31))))
+  "long hashcode"
+  (^long [^long state ^long a]
+   (let [elt (bit-xor a (>>> a 32))]
+     (+ elt (* 31 state))))
+  (^long [^long a]
+   (let [elt (bit-xor a (>>> a 32))]
+     (+ elt 31))))
 
 (deftype Point [^long x ^long y
                 ^:unsynchronized-mutable ^int _hasheq
@@ -131,8 +145,8 @@
   ;;technique shamelessly borrowed from fastmath!
   (equals [this v]
     (and (instance? Point v)
-         (and (== x (.x ^Point v))
-              (== y (.y ^Point v)))))
+         (bool-and (== x (.x ^Point v))
+                   (== y (.y ^Point v)))))
   clojure.lang.IHashEq
   (hasheq [this]
     (if (== _hasheq (int -1))
@@ -154,23 +168,23 @@
   (valAt [_ k]    (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (valAt [_ k nf] (case-if k :x x :y y nf))
   java.util.Map
-  (get [this k] (.valAt this k))
+  (get [this k] (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (put    [this k v]  (throw (ex-info "unsupported-op!" {})))
   (putAll [this c] (throw (ex-info "unsupported-op!" {})))
   (clear  [this] (throw (ex-info "unsupported-op!" {})))
   (containsKey   [this k]
-    (case-if k :x true :y true false))
+    (if (or (= k :x)
+            (= k :y)) true false))
   (containsValue [this o]
     (throw (ex-info "unsupported-op!" {})))
   (entrySet [this] (set (seq {:x x :y y})))
-  (keySet   [this] #{x y})
-  )
+  (keySet   [this] #{x y}))
 
 #_(definline ->Point [x y]
   `(Point. (long ~x) (long ~y) -1 -1))
 
-(defn ^Point ->Point [x y]
-  (Point. (long x) (long y) -1 -1))
+(defn ^Point ->Point [^long x ^long y]
+  (Point. x y -1 -1))
 
 (defprotocol ILevel
   (lev-width   [level])
@@ -222,6 +236,7 @@
 ;;this hasn't panned out yet, which is curious since it's competing against
 ;;an ArrayMap....needs more research.
 (defrecord+ robot ^:strict [x y layout active-boosters picked-booster path current-zone plan])
+;; => icfpc.core.robot
 
 
 #_(definline new-bot [x y]
@@ -297,9 +312,9 @@
   (lev-weights [this] (.valAt this :weights))
   (lev-zones   [this] (.valAt this :zones-grid)))
 
-(def ^:const EMPTY (byte 0))
-(def ^:const OBSTACLE (byte 1))
-(def ^:const WRAPPED (byte 2))
+(def ^:const ^byte EMPTY (byte 0))
+(def ^:const ^byte OBSTACLE (byte 1))
+(def ^:const ^byte WRAPPED (byte 2))
 
 ;;Instructions that determine
 ;;our bot's movement and actions I think.
@@ -326,12 +341,12 @@
 (def ^:const REPLICATE  \C)
 
 (defn spend
-  ([v] (cond (nil? v) nil (> v 1) (dec v) :else 0))
+  ([^long v] (cond (nil? v) nil (> v 1) (dec v) :else 0))
   ([map k k2]
    (let [v ((map k) k2)]
      (cond
        (nil? v) map
-       (> v 1)  (update map k assoc k2 (dec v))
+       (> ^long v 1)  (update map k assoc k2 (dec ^long v))
        :else    (update map k dissoc k2)))))
 
 ;;These are all performance killers due to function
@@ -339,50 +354,54 @@
 
 ;;(defn coord->idx ^long [level x y] (+ x (* y (:width level))))
 #_(defn get-level
-  ([level x y]
-   (aget ^bytes (:grid level) (coord->idx level x y)))
-  ([ level x y default]
-   (if (and
-         (< -1 x (:width level))
-         (< -1 y (:height level)))
-     (aget ^bytes (:grid level) (coord->idx level x y))
-     default)))
+    ([level x y]
+     (aget ^bytes (:grid level) (coord->idx level x y)))
+    ([ level x y default]
+     (if (and
+          (< -1 x (:width level))
+          (< -1 y (:height level)))
+       (aget ^bytes (:grid level) (coord->idx level x y))
+       default)))
 
-(definline coord->idx [level x y]
-  `(let [w# (lev-width ~level)]
-     (unchecked-add ~x (unchecked-multiply ~y w#))))
+#_(definline coord->idx [level x y]
+    `(let [^long w# (lev-width ~level)]
+       (unchecked-add ^long ~x (unchecked-multiply ^long ~y w#))))
+
+(defn coord->idx ^long [^lev level ^long x ^long y]
+  (let [w (.width level)]
+    (+ x (* y w))))
 
 (defn get-level
   "blah"
   {:inline (fn
              ([level x y]
-              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+              (let [b (with-meta `(.grid ~level) {:tag 'icfpc.core.IByteMap})]
                 `(.getByte ~b  ~x ~y)))
              ([level x y default]
-              (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
+              (let [b (with-meta `(.grid ~level) {:tag 'icfpc.core.IByteMap})]
                 `(if (and
-                      (<* -1 ~x (lev-width ~level))
-                      (<* -1 ~y (lev-height ~level)))
+                      (< -1 ~x (.width ~level))
+                      (< -1 ~y (.height ~level)))
                    (.getByte  ~b ~x ~y)
-                 ~default))))
-    :inline-arities #{3 4}}
-  ([level x y]  (get-byte (lev-grid level)  x y))
-  ([level x y default]
-   (if (and
-        (<* -1 x (lev-width  level))
-        (<* -1 y (lev-height level)))
-     (get-byte (lev-grid level) x y)
+                   ~default))))
+   :inline-arities #{3 4}}
+  ([^lev level x y]  (get-byte (.grid level)  x y))
+  ([^lev level ^long x ^long y default]
+   (if (bool-and
+        (< -1 x (.width  level))
+        (< -1 y (.height level)))
+     (get-byte (.grid level) x y)
      default)))
 
-(definline set-level [level x y value]
-  `(do (set-byte (lev-grid ~level) ~x ~y ~value)
+(definline set-level [^lev level x y value]
+  `(do (set-byte (.grid ~level) ~x ~y ~value)
        ~level))
 
-(defn get-zone [level x y]
-  (get-byte (lev-zones level) x y))
+(defn get-zone [^lev level x y]
+  (get-byte (.zones_grid level) x y))
 
-(defn zone-area [level zone]
-  ((level :zones-area) zone))
+(defn zone-area ^long [^lev level zone]
+  ((.zones_area level) zone))
 
 (defn seek [pred coll]
   (some #(if (pred %) %) coll))
@@ -392,13 +411,13 @@
 
 (defn sol-score [sol]
   (->> (clojure.string/split sol #"#")
-    (map path-score)
-    (reduce max)))
+       (map path-score)
+       (reduce clojure.core/max)))
 
-(defn level-score [level]
-  (->> (:bots level)
-    (map #(path-score (:path %)))
-    (reduce max)))
+(defn level-score [^lev level]
+  (->> (.bots level)
+       (map #(path-score (:path %)))
+       (reduce clojure.core/max)))
 
 (defn arr-reduce [f init ^bytes arr]     
   (areduce arr i ret init

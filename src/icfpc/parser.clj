@@ -2,7 +2,8 @@
   (:require
    [clojure.string :refer [split]]
    [icfpc.core :refer :all]
-   [icfpc.writer :as writer]))
+   [icfpc.writer :as writer])
+  (:import [icfpc.core lev]))
 
 #_(defn parse-points [points-str]
   (if (not-empty points-str)
@@ -61,7 +62,7 @@
 (defn validate-puzzle
   "Check if generated map matches puzzle"
   [{:keys [t-size v-min v-max extra-hands fast-wheels drills teleports cloning spawns include exclude] :as puzzle}
-   {:keys [grid boosters] :as level}]
+   {:keys [grid boosters] :as ^lev level}]
   (let [segments (writer/segments level)
         min-x    (apply min (map first segments))
         max-x    (apply max (map first segments))
