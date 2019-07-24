@@ -218,6 +218,12 @@
     `(let [~b ~bm]
        (.setByte ~b (int ~i) (int ~j) (byte ~v)))))
 
+
+
+
+
+;;this hasn't panned out yet, which is curious since it's competing against
+;;an ArrayMap....needs more research.
 (defrecord+ robot ^:strict [x y layout active-boosters picked-booster path current-zone plan])
 
 

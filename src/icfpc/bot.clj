@@ -314,66 +314,9 @@
               [best-path best-pos])))        
         [best-path best-pos]))))
 
-#_(defn explore* [level rate-fn]
-  (with-slots [{:fields [width height ^Indexed bots bot ^Indexed beakons fringe]} ^lev level 
-               {:keys [x y ^IPersistentMap active-boosters]} ^IPersistentMap (.nth bots bot)
-               ;;we're hashing a lot here....paths is just a set of [x y] coordinates.
-               ^icfpc.core.IFringe paths (-> fringe  clear-fringe! (add-fringe (->Point x y)))
-               ^java.util.ArrayDeque queue (doto (ArrayDeque.)
-                                             (.add (botmove. [] (->Point x y) (active-boosters FAST_WHEELS 0) (active-boosters DRILL 0) #{})))
-               explore-depth *explore-depth*]
-    (loop [max-len   explore-depth
-           best-path nil
-           best-pos  nil
-           best-rate 0.0]
-      (if-some [move (.poll queue)]
-        (with-slots [{:fields [^Counted path ^Indexed pos fast drill drilled]} ^botmove move                                  
-                     [x y]         pos         
-                     path-length   (.count path)]
-          (if (< path-length max-len)
-            ;; still exploring inside max-len
-            (let [b0 (and beakons (.nth beakons 0 nil))
-                  b1 (and beakons (.nth beakons 1 nil))
-                  b2 (and beakons (.nth beakons 2 nil))]
-              ;; moves
-              (doseq [mv [[LEFT -1 0] [RIGHT 1 0] [UP 0 1] [DOWN 0 -1]]]
-                (with-slots [[move dx dy] ^Indexed mv 
-                             ;;this is a Point
-                             pos'  (step x y dx dy (pos? fast) (pos? drill) drilled level)]
-                    (when (and (some? pos')
-                               ;;haven't visited [x y] yet.
-                               (not (.has-fringe? paths pos')))
-                      (let [path'    (conj path move) ;;slow conj to vector.
-                            drilled' (cond-> drilled (pos? drill) (conj pos'))]
-                        (.add-fringe  paths pos')
-                        (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled'))))))
-              ;; jumps
-              (doseq [^Indexed mv [[:jump0 b0] [:jump1 b1] [:jump2 b2]]]
-                (let [move (.nth mv 0)
-                      pos' (.nth  mv 1)]
-                  (when (and  (some? pos')
-                              ;;haven't visited [x y] yet.
-                              (not (.has-fringe? paths pos')))
-                    (let [path' (conj path move)]
-                      (.add-fringe paths pos')
-                      (.add queue (botmove. path' pos' (spend fast) (spend drill) drilled))))))
-              (cond+
-               (zero? path-length) (recur max-len best-path best-pos best-rate)
-               :let [rate (/ (rate-fn pos level) (double  path-length))]
-               (zero? rate)       (recur max-len best-path best-pos best-rate)
-               (zero? best-rate)  (recur max-len path pos rate)
-               (> rate best-rate) (recur max-len path pos rate)
-               (< rate best-rate) (recur max-len best-path best-pos best-rate)
-               (< path-length     (.count ^Counted  best-path)) (recur max-len path pos rate)
-               :else (recur max-len best-path best-pos best-rate)))
-            ;; only paths with len > max-len left, maybe already have good solution?
-            (if (nil? best-path)
-              (do
-                (.addFirst queue move)
-                (recur (unchecked-add  max-len explore-depth) nil nil 0.0)) ;; not found anything, try expand
-              [best-path best-pos])))        
-        [best-path best-pos]))))
-
+;;this is technically on the hot path, although
+;;the savings from nthing on the vector returned by
+;;explore* may be minimal.
 (defn explore [level rate-fn]
   #_(first (explore* level rate-fn))
   (.nth  ^Indexed (explore* level rate-fn) 0))
@@ -467,6 +410,7 @@
                        (with-slots [[x y] ^Indexed xy]
                          (if (= (boosters [x y]) CLONE) 1 0)))))))
 
+;;boosters lookup
 (defn collect-clone [{:keys [boosters collected-boosters bot] :as level}]
   (when (and
           (= 0 bot )
@@ -541,7 +485,8 @@
 
 ;(definline nempty [coll]
   
-
+;;looks like the only place we end up causing a
+;;shared state change, namely in picking up boosters...
 (defn advance* [level]
   (cond+
     :let [bot (nth (level :bots) (level :bot))]
@@ -556,6 +501,12 @@
         (update-bot :picked-booster (constantly nil))))
 
     :when-some [plan (not-empty (bot :plan))]
+    ;;this is the only place act is called.
+    ;;through act we call move.
+    ;;move invokes call-wrapped (eventually),
+    ;;which will affect the boosters.
+    ;;booster lookup
+    ;;booster dissoc
     (let [action (first plan)
           level' (-> (act level action)
                    (wear-off-boosters))]

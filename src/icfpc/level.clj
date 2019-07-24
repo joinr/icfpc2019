@@ -197,6 +197,8 @@
       [(+ x dx) (+ y dy)])))
 
 ;;Gets called from mark-wrapped a bit.
+;;booster lookup
+;;booster dissoc
 (defn pick-booster [level]
   (with-slots [{:fields [^Indexed bots bot boosters]}    ^lev level
                {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
@@ -241,33 +243,6 @@
          level)))
    (-> level pick-booster drill)
    (bot-covering level)))
-
-#_(defn mark-wrapped [level]
-  (reduce
-   (fn [level xy]
-     (with-slots [[x y] ^Indexed xy]
-       (if (= EMPTY (get-level level x y))
-         (-> level
-             (set-level x y WRAPPED)
-             (update :zones-area #(update % (get-zone level x y) dec))
-             (update :empty dec))
-         level)))
-   (-> level pick-booster drill)
-   (bot-covering level)))
-
-#_(defn mark-wrapped [level]
-  (with-slots [{:fields [boosters]} ^lev level]
-    (reduce
-     (fn [level [x y]]
-       (if (= EMPTY (get-level level x y))
-         (-> level
-             (set-level x y WRAPPED)
-             (update :zones-area update (get-zone level x y) dec)
-             (update :empty dec))
-         level))
-     (-> level pick-booster drill)
-     (bot-covering level))))
-
 
 (defn bounds [points]
   (let [xs (map first points)

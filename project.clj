@@ -16,7 +16,7 @@
   :jvm-opts  ^:replace ["-server"
                                         ;"-Xmx4g"
                         "-Xverify:none"
-                                        ;"-XX:+PrintComypilation"
+                                        ;"-XX:+PrintCompilation"
                                         ;"-XX:+UnlockDiagnosticVMOptions"
                                         ;"-XX:+PrintInlining"
                         ]
