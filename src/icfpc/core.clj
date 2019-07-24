@@ -115,16 +115,26 @@
 
 ;;fastmath
 ;;https://github.com/generateme/fastmath/blob/master/src/fastmath/vector.clj
+#_(defn- dhash-code
+    "double hashcode"
+    (^long [^long state ^double a]
+     (let [abits (Double/doubleToLongBits a)
+           elt (bit-xor abits (>>> abits 32))]
+       (+ elt (* 31 state))))
+    (^long [^double a]
+     (let [abits (Double/doubleToLongBits a)
+           elt (bit-xor abits (>>> abits 32))]
+       (+ elt 31))))
+
+;; above is good for doubles
 (defn- dhash-code
-  "double hashcode"
-  (^long [^long state ^double a]
-   (let [abits (Double/doubleToLongBits a)
-         elt (bit-xor abits (unsigned-bit-shift-right abits 32))]
-     (unchecked-add elt (unchecked-multiply 31 state))))
-  (^long [^double a]
-   (let [abits (Double/doubleToLongBits a)
-         elt (bit-xor abits (unsigned-bit-shift-right abits 32))]
-     (unchecked-add elt 31))))
+  "long hashcode"
+  (^long [^long state ^long a]
+   (let [elt (bit-xor a (>>> a 32))]
+     (+ elt (* 31 state))))
+  (^long [^long a]
+   (let [elt (bit-xor a (>>> a 32))]
+     (+ elt 31))))
 
 (deftype Point [^long x ^long y
                 ^:unsynchronized-mutable ^int _hasheq
@@ -158,17 +168,17 @@
   (valAt [_ k]    (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (valAt [_ k nf] (case-if k :x x :y y nf))
   java.util.Map
-  (get [this k] (.valAt this k))
+  (get [this k] (case-if k :x x :y y (throw (ex-info "invalid-key!" {:unknown-key k}))))
   (put    [this k v]  (throw (ex-info "unsupported-op!" {})))
   (putAll [this c] (throw (ex-info "unsupported-op!" {})))
   (clear  [this] (throw (ex-info "unsupported-op!" {})))
   (containsKey   [this k]
-    (case-if k :x true :y true false))
+    (if (or (= k :x)
+            (= k :y)) true false))
   (containsValue [this o]
     (throw (ex-info "unsupported-op!" {})))
   (entrySet [this] (set (seq {:x x :y y})))
-  (keySet   [this] #{x y})
-  )
+  (keySet   [this] #{x y}))
 
 #_(definline ->Point [x y]
   `(Point. (long ~x) (long ~y) -1 -1))
@@ -360,28 +370,28 @@
 
 (defn get-level
   "blah"
-  #_{:inline (fn
-               ([level ^long x ^long y]
-                (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
-                  `(.getByte ~b  ~x ~y)))
-               ([level x y default]
-                (let [b (with-meta `(lev-grid ~level) {:tag 'icfpc.core.IByteMap})]
-                  `(if (and
-                        (<* -1 ~x ^int (lev-width ~level))
-                        (<* -1 ~y ^int (lev-height ~level)))
-                     (.getByte  ~b ~x ~y)
-                     ~default))))
-     :inline-arities #{3 4}}
-  ([^lev level x y]  (get-byte (.lev_grid level)  x y))
+  {:inline (fn
+             ([level x y]
+              (let [b (with-meta `(.grid ~level) {:tag 'icfpc.core.IByteMap})]
+                `(.getByte ~b  ~x ~y)))
+             ([level x y default]
+              (let [b (with-meta `(.grid ~level) {:tag 'icfpc.core.IByteMap})]
+                `(if (and
+                      (< -1 ~x (.width ~level))
+                      (< -1 ~y (.height ~level)))
+                   (.getByte  ~b ~x ~y)
+                   ~default))))
+   :inline-arities #{3 4}}
+  ([^lev level x y]  (get-byte (.grid level)  x y))
   ([^lev level ^long x ^long y default]
    (if (bool-and
         (< -1 x (.width  level))
         (< -1 y (.height level)))
-     (get-byte (.lev_grid level) x y)
+     (get-byte (.grid level) x y)
      default)))
 
 (definline set-level [^lev level x y value]
-  `(do (set-byte (.lev_grid ~level) ~x ~y ~value)
+  `(do (set-byte (.grid ~level) ~x ~y ~value)
        ~level))
 
 (defn get-zone [^lev level x y]

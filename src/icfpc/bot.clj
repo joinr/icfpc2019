@@ -395,7 +395,7 @@
            (+ (dec (int \a))
               (mod ^long n (- (int \z) (int \a)))))))
 
-(defn print-level [{:keys [bots ^int width ^int height name boosters beakons spawns] :as level} 
+(defn print-level [{:keys [bots ^int width ^int height name boosters beakons spawns] :as ^lev level} 
                    & {:keys [colored? ^long max-w ^long max-h] :or {max-w 50 max-h 20 colored? true zones? false}}]
   (println name)
   (let [beakons (set beakons)
@@ -536,7 +536,7 @@
             untaken      (set/difference unfinished taken)
             look-in      (if (empty? untaken) unfinished untaken)
             [path [x y]] (explore* level
-                                   (fn [[x y] level]
+                                   (fn [[^long x ^long y] ^lev level]
                                      (cond+
                                       (not= EMPTY (get-level level x y)) 0
                                       (look-in (get-zone level x y)) 1

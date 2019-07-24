@@ -155,7 +155,7 @@
 
 (set! *unchecked-math* false)
 
-(defn obstacle?  [level x y dx' dy']
+(defn obstacle?  [^lev level x y dx' dy']
   (not= OBSTACLE (get-level level (+ ^long x ^long dx') (+ ^long y ^long dy'))))
 
 ;;perf: this is a hot spot

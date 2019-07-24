@@ -22,7 +22,7 @@
         (recur (conj path current) parent (inc depth)))
       path)))
 
-(defn bfs [level [x y :as start] target block]
+(defn bfs [^lev level [x y :as start] target block]
   (loop [q (queue start)
          parents {start nil}]
     (if-let [p (peek q)]
@@ -57,7 +57,7 @@
             level
             points)))
 
-(defn fill-bfs [level [x y :as start] target block]
+(defn fill-bfs [^lev level [x y :as start] target block]
   (loop [q (queue start)
          parents {start nil}
          level level]
@@ -79,7 +79,7 @@
 (defn min-area ^long [^long t-size]
   (long (m/ceil (* 0.2 (* t-size t-size)))))
 
-(defn inflate [level]
+(defn inflate [^lev level]
   (let [empty-fields (points-by-value level EMPTY)
         borders (filter
                  (fn [[x y]] (not= (get-level level x y) OBSTACLE))
