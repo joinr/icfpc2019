@@ -303,6 +303,12 @@ Rewrote as an eduction, composed with mapping an
 efficient with-slots call to destructure and filtered.
 A few %point gains.  Could be rewritten more elegantly
 using the xforms librariy, with its for transducer.
+** Booster Map
+Lots of hash lookups over vectors on the booster-map.  Similarly wrapped
+with a bitgrid. 
+** Primitive Math
+Using primitive math from fastmath and hinted operations bought a significant
+speed boost, on the order of 20-30% for the single large instance.
 * Pending Efforts
 ** Load Level
 I spent a decent amount of time exploring optimizations here, and implemented
