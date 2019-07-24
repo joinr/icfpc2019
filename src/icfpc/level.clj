@@ -203,7 +203,7 @@
   (with-slots [{:fields [^Indexed bots bot boosters]}    ^lev level
                {:keys [x y]}        ^IPersistentMap (.nth bots bot)]
     ;;Possible slow path here...hashing [x y] pairs.
-    (if-some [booster (boosters [x y])]
+    (if-some [booster #_(boosters [x y]) (boosters x y)]
       (-> level
         (update :boosters dissoc [x y])
         (update-bot :picked-booster (constantly booster)))
@@ -447,10 +447,13 @@
 
 (defn booster-map [w h boosters]
   (let [bg (->byte-grid w h)
-        _  (fill-bytes (bg) EMPTY)]
+        _  (fill-bytes (bg) EMPTY)
+        original (atom boosters)]
     (doseq [[[x y] b] boosters]
       (set-byte bg x y b))
     (reify clojure.lang.IPersistentMap
+      (seq [this]
+        (seq @original))
       (valAt [this k]
         (with-slots [[x y] ^Indexed k]
           (let [v  (get-byte bg x y)]
@@ -461,8 +464,9 @@
       (without [this k]
         (with-slots [[x y] ^Indexed k]
           (let [v  (get-byte bg x y)]          
-            (when-not (== v EMPTY)
-              (set-byte bg x y EMPTY))
+            (when-not (== v EMPTY)              
+              (set-byte bg x y EMPTY)
+              (swap! original dissoc [x y]))
             this)))
       clojure.lang.IFn
       (invoke [this k] (.valAt this k))
