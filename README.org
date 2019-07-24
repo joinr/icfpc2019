@@ -36,7 +36,7 @@ DONE in 983866  ms
 
 After spending some time exploring (really learning the code base), 
 benchmarking, and applying incremental operational improvements,
-as of 16 July 2019, the version in the `opt` branch, running the
+as of +16+ 23 July 2019, the version in the `opt` branch, running the
 same function gives us:
 
 #+BEGIN_EXAMPLE
@@ -106,7 +106,6 @@ faster reads, etc.  For hot paths, this is pretty effective
 (initially just improving Points took the problem runtime
 from 100s to ~20s on my machine for the "big" problem instance
 used for testing, prob-277.).
-
 ** Precomputed lookup table is inefficient
 Again, this leverages Points for everything.  There are
 also commonalities in the data (e.g. all x coordinates
@@ -294,7 +293,6 @@ On the large map instance, this alone netted about a 6% increase
 for modifying a single function `icfpc.bot/move`.
 
 * Pending Efforts
-
 ** Load Level
 I spent a decent amount of time exploring optimizations here, and implemented
 many.  This isn't the lion's share of the performance cost though, but it's
@@ -357,6 +355,13 @@ odd stuff, it could be something exogenous...
 
 After restarting, I get the same project spinning back up hitting
 records again.  Weird, and no idea what's causing it.
+
+*** Possible fix
+I think this has something to with with previously generated
+class files, hence the persistence between jvm sessions.
+So far, calling `lein clean` in between sessions seems to have
+helped. Not 100% sure, but I can get more reliable benchmarks
+it seems.
 ** Interesting Perf Difference Between ArrayMaps and Records
 Original idea of just "structing" the bot representation
 into a record and getting the same benefits from
@@ -380,7 +385,7 @@ Strange, still on nanosecond scale...
   basically an array lookup, and checks identical? for the
   input key (object has a similar path, but a bit more expensive).
 - the IFn implementation for arraymaps delegates to .valAt.
-
+  
 ****  Records....
 - Records have this notion that they're going to be uber fast
   for their static or canonical keys, since the keys are actually
