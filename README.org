@@ -61,6 +61,67 @@ wall-clock to +2m 21s+ +1m 54s+ +1m 46s+ ~1m 26s~.  Comparisons of the baseline 
 branch, scores.edn) and the resulting scores (in opt branch,
 scores.edn) show problems have identical scores.
 
+** Note on the Rust Implementation Result Consistency 
+I finally got around to running the rust implementation on a separate
+linux machine, and generally got similar results (although I didn't
+mess with thread count, so my linux machine (an AWS EC2 M4Large instance)
+only uses 2 threads for the default setup.
+
+I used the same rust invocation per the readme, and the
+the results are in rustrun.txt.
+
+On 2 threads, clojure comes in at:
+|Lang|implementation|ms|
+|----+--------------+-- |
+|Clojure|opt commit 107d811]203,353|
+|Rust|master 6d2c5933|79635.0|
+
+The interesting part of this comparison, beyond the
+relative distance in speed (2.55x) on 2 threads, 
+is inconsistency in scores between the rust implementation
+and the original clojure baseline.  For verification
+purposes, I maintained that the Clojure optimizations
+should not impact any of the results.  It looks like
+the Rust implementation is not similarly constrained.
+
+*** comparisons 
+Comparisons of rust results (from rustrun.txt) and
+the baseline clojure results (scores.edn) are
+available in differences.txt.  This file
+was generated using the code in icfpc.compare.
+
+** Performance variations
+Also interesting, is that performance on a per-problem
+basis is different.  If the Rust timings are accurate,
+prob-277 (my "large" test case for optimization), took
+4679ms per the results in rustrun.txt.
+
+The clojure implementation reports timings
+for the run, but there's additional overhead
+if you time from the REPL:
+#+BEGIN_SRC clojure
+icfpc.main> (time (solve-elided "prob-277"))
+Solved prob-277 "Elapsed time: 8831.472527 msecs"
+{:score 11013, :time 7364} was [elided]
+11013
+#+END_SRC
+
+So on the same AWS linux machine, for a large problem, in which
+the Rust implementation is getting a lower score for some reason
+(which in my testing corresponded with unintentionally doing
+less work than the baseline due to unchecked math),
+Clojure pops in at between [1.88 1.57]x the runtime of
+the Rust implementation - while doing more work (in theory).
+
+I am unsure of the divergence in results from the baseline.
+Notably, some problems in the Rust implementation achieve
+higher scores than Clojure.  The differences are not on an 
+the order of magnitude, but from personal experience 
+"optimizing" by unintentionally doing less work, they can
+certainly impact results.  It would be nice to see if
+there is a reproducible optimum for the solutions...
+
+** General Remarks
 I think there are more tweaks and hacks to be applied.  Notably,
 I did nothing to change the implementation of any search algorithms,
 only to speed up existing functions, optimize data access patterns,
