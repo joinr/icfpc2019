@@ -117,7 +117,7 @@
         level))
     level))
 
-;;this one has at 8762 min...the only thing I
+;;this one has at 8441 min...the only thing I
 ;;can guess is that inlining is a factor.
 ;;turns out it was the assoc, multi-arity
 ;;call to assoc incurs restfn debt.
@@ -125,13 +125,9 @@
   (some-> level
     (map-bot  (fn [bot]
                 (with-slots [{:keys [x y path]} ^IPersistentMap bot]
-                  (->  bot
-                       ;(assoc :x (+ x dx))
-                       ;(assoc :y (+ y dy))
-                       ;(assoc :path (str path action))
-                       (assoc* :x (+ x dx)
-                               :y (+ y dy)
-                               :path (str path action))))))
+                  (assoc* bot :x    (+ x dx)
+                              :y    (+ y dy)
+                              :path (str path action)))))
     (valid?)
     (mark-wrapped)
     (extra-move dx dy)))

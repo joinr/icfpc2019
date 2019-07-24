@@ -8,12 +8,19 @@
   (println x)
   x)
 
-(defmacro assoc* [m & kvs]
+
+;;despite the direct method invocations, this is actually
+;;apparently less inlineable than the assoc variant...
+;;we get an edge if we use assoc (at least for
+;;persistent maps).  Fascinating.
+#_(defmacro assoc* [m & kvs]
   (let [sym (with-meta (gensym "map") {:tag 'clojure.lang.Associative})]
     `(let [~sym ~m] (-> ~sym  ~@(for [[k f] (partition 2 kvs)] `(.assoc ~k ~f))))))
 
-
-#_(defmacro assoc* [m & kvs]
+(defmacro assoc*
+  "Expanded version of the variadic implementation of clojure.core/assoc,
+   except it avoids the variadic call, saving some performance."
+  [m & kvs]
   (let [sym (with-meta (gensym "map") {:tag 'clojure.lang.Associative})]
     `(let [~sym ~m] (-> ~sym  ~@(for [[k f] (partition 2 kvs)] `(assoc ~k ~f))))))
 
