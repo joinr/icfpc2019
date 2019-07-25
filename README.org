@@ -56,8 +56,8 @@ DONE in 86440  ms
 #+END_EXAMPLE
 
 Or about a +6.91+ +8.52+ +9.2+ ~11.4~ fold improvement (assuming everything is still
-computing correctly, and timing is accurate), or down from ~16m 22s
-wall-clock to +2m 21s+ +1m 54s+ +1m 46s+ ~1m 26s~.  Comparisons of the baseline scores (in baseline
+computing correctly, and timing is accurate), or down from ~16m22s~
+wall-clock to +2m21s+ +1m54s+ +1m46s+ ~1m26s~.  Comparisons of the baseline scores (in baseline
 branch, scores.edn) and the resulting scores (in opt branch,
 scores.edn) show problems have identical scores.
 
@@ -152,7 +152,13 @@ of a decent profiler and some pre-existing rules of thumb...).
 
 Thanks to the authors of the original implementation for sharing
 their work and allowing me to learn from it (in particular
-Nikita Prokopov, a.k.a. Tonsky).
+Nikita Prokopov, a.k.a. [[https://github.com/tonsky/][tonsky]]).
+
+Thanks for user [[https://github.com/tsulef][teesel]] via [[https://github.com/genmeblog][genmeblog]] for contributing primitive math
+ops and some additional optimizations I missed during my initial pass.
+I learned a lot from those submissions, particularly how straightforward
+it could be to migrate away from boxed math to primitive math, and netting
+a really nice performance boost in the process.
 
 * Main Impediments
 
