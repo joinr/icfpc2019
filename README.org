@@ -67,14 +67,22 @@ linux machine, and generally got similar results (although I didn't
 mess with thread count, so my linux machine (an AWS EC2 M4Large instance)
 only uses 2 threads for the default setup.
 
+*** AWS Instance
+- 2.3 GHz Intel Xeon® E5-2686 v4 (Broadwell) processors 
+  or 2.4 GHz Intel Xeon® E5-2676 v3 (Haswell) processors
+
+| Model    | vCPU* | Mem (GiB) | Storage  | Dedicated EBS Bandwidth (Mbps) | Network Performance |
+|----------+-------+-----------+----------+--------------------------------+---------------------|
+| m4.large |     2 |         8 | EBS-only |                            450 | Moderate            |
+
+
 I used the same rust invocation per the readme, and the
 the results are in rustrun.txt.
 
-On 2 threads, clojure comes in at:
-|Lang|implementation|ms|
-|----|--------------|--|
-|Clojure|opt commit 107d811|203,353  |
-|Rust|master 6d2c5933|79635.0|
+| Lang    | implementation | commit   | Threads | ms      |
+|---------+----------------+----------+---------+---------|
+| Clojure | opt            | 107d811  |       2 | 203,353 |
+| Rust    | master         | 6d2c5933 |       2 | 79635   |
 
 The interesting part of this comparison, beyond the
 relative distance in speed (2.55x) on 2 threads, 
